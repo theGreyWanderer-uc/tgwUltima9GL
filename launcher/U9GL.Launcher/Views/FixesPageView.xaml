@@ -1,0 +1,38 @@
+<UserControl x:Class="U9GL.Launcher.Views.FixesPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Fixes" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Style="{StaticResource SecondaryTextStyle}" Margin="0,0,0,20"
+                   Text="Fixes for crashes and faults in the stock game. They stay on: turning one off brings its crash back, so U9GL does not offer that." />
+
+        <ItemsControl ItemsSource="{Binding Settings}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Margin="0,0,-12,0"
+                               ItemWidth="{Binding ActualWidth, RelativeSource={RelativeSource Self},
+                                                   Converter={StaticResource Fraction}, ConverterParameter=0.5}" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,12,12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitleStyle}" />
+                                <TextBlock Text="{Binding Help}" Style="{StaticResource SecondaryTextStyle}" />
+                                <TextBlock Text="{Binding DiagNote}" Style="{StaticResource ErrorTextStyle}" Margin="0,4,0,0"
+                                           Visibility="{Binding DiagNote, Converter={StaticResource TextToVisibility}}" />
+                                <TextBlock Text="{Binding FixStateText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Foreground="{Binding FixTone, Converter={StaticResource ToneBrush}}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Turn back on" Command="{Binding TurnOnCommand}"
+                                    VerticalAlignment="Center" Padding="14,6"
+                                    Visibility="{Binding CanTurnOn, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

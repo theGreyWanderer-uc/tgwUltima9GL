@@ -1,0 +1,1600 @@
+#include <windows.h>
+#include <GL/gl.h>
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
+#include "../diag/log.h"
+#include "../injection/config.h"
+#include "metrics.h"
+#include "../common/u9time.h"
+#include "glspaces.h"
+#include "glshadow.h"
+
+#define GL_FRAMEBUFFER               0x8D40
+#define GL_COLOR_ATTACHMENT0         0x8CE0
+#define GL_DEPTH_ATTACHMENT          0x8D00
+#define GL_FRAMEBUFFER_COMPLETE      0x8CD5
+#define GL_FRAGMENT_SHADER           0x8B30
+#define GL_VERTEX_SHADER             0x8B31
+#define GL_COMPILE_STATUS            0x8B81
+#define GL_LINK_STATUS               0x8B82
+#define GL_TEXTURE0                  0x84C0
+#define GL_CLAMP_TO_EDGE             0x812F
+#define GL_TEXTURE_CUBE_MAP          0x8513
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
+#define GL_R32F                      0x822E
+#define GL_RED_                      0x1903
+#define GL_DEPTH_COMPONENT24         0x81A6
+#define GL_TEXTURE_SWIZZLE_G         0x8E43
+#define GL_TEXTURE_SWIZZLE_B         0x8E44
+
+typedef void   (APIENTRY *GenFramebuffersFn)(GLsizei, GLuint *);
+typedef void   (APIENTRY *BindFramebufferFn)(GLenum, GLuint);
+typedef void   (APIENTRY *FramebufferTexture2DFn)(GLenum, GLenum, GLenum, GLuint, GLint);
+typedef GLenum (APIENTRY *CheckFramebufferStatusFn)(GLenum);
+typedef GLuint (APIENTRY *CreateShaderFn)(GLenum);
+typedef void   (APIENTRY *ShaderSourceFn)(GLuint, GLsizei, const char *const *, const GLint *);
+typedef void   (APIENTRY *CompileShaderFn)(GLuint);
+typedef void   (APIENTRY *GetivFn)(GLuint, GLenum, GLint *);
+typedef void   (APIENTRY *GetInfoLogFn)(GLuint, GLsizei, GLsizei *, char *);
+typedef GLuint (APIENTRY *CreateProgramFn)(void);
+typedef void   (APIENTRY *AttachShaderFn)(GLuint, GLuint);
+typedef void   (APIENTRY *LinkProgramFn)(GLuint);
+typedef void   (APIENTRY *UseProgramFn)(GLuint);
+typedef void   (APIENTRY *DeleteFn)(GLuint);
+typedef GLint  (APIENTRY *GetUniformLocationFn)(GLuint, const char *);
+typedef void   (APIENTRY *Uniform1iFn)(GLint, GLint);
+typedef void   (APIENTRY *Uniform1fFn)(GLint, GLfloat);
+typedef void   (APIENTRY *Uniform2fFn)(GLint, GLfloat, GLfloat);
+typedef void   (APIENTRY *Uniform3fFn)(GLint, GLfloat, GLfloat, GLfloat);
+typedef void   (APIENTRY *Uniform4fFn)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+typedef void   (APIENTRY *ActiveTextureFn)(GLenum);
+
+static GenFramebuffersFn        fGenFramebuffers;
+static BindFramebufferFn        fBindFramebuffer;
+static FramebufferTexture2DFn   fFramebufferTexture2D;
+static CheckFramebufferStatusFn fCheckFramebufferStatus;
+static CreateShaderFn           fCreateShader;
+static ShaderSourceFn           fShaderSource;
+static CompileShaderFn          fCompileShader;
+static GetivFn                  fGetShaderiv, fGetProgramiv;
+static GetInfoLogFn             fGetShaderInfoLog, fGetProgramInfoLog;
+static CreateProgramFn          fCreateProgram;
+static AttachShaderFn           fAttachShader;
+static LinkProgramFn            fLinkProgram;
+static UseProgramFn             fUseProgram;
+static DeleteFn                 fDeleteShader;
+static GetUniformLocationFn     fGetUniformLocation;
+static Uniform1iFn              fUniform1i;
+static Uniform1fFn              fUniform1f;
+static Uniform2fFn              fUniform2f;
+static Uniform3fFn              fUniform3f;
+static Uniform4fFn              fUniform4f;
+static ActiveTextureFn          fActiveTexture;
+
+int      g_shadowOn;
+int      g_shadowSize = 512;
+int      g_shadowCutouts = 1;
+int      g_shadowView;
+float    g_shadowNear = 24.0f;
+float    g_shadowFixture = 384.0f;
+float    g_shadowColumn = 48.0f;
+float    g_shadowPart = 96.0f;
+int      g_shadowHideBlob = 1;
+int      g_shadowCount = 8;
+unsigned g_shadowBuilds, g_shadowTris, g_shadowFixtures;
+int      g_sunView, g_sunDebug, g_sunOn;
+float    g_sunStrength = 0.60f;
+int      g_sunSize = 2048;
+float    g_sunRange = 10000.0f;
+float    g_sunNear = 1000.0f;
+int      g_sunCascades = 1;
+float    g_sunAhead = 0.6f;
+float    g_sunMinElevation = 5.0f;
+float    g_sunFadeFrom = 2500.0f, g_sunFadeTo = 4000.0f;
+float    g_sunBias = 0.0f;
+int      g_sunSlopeOcc = 1;
+int      g_sunWalls = 1;
+int      g_sunSteady = 1;
+#define SUN_STEADY_DEG  3.0f
+#define SUN_STEADY_AWAY 2000.0f
+static float    g_sunPivot[3];
+static float    g_sunRef[3];
+static int      g_sunHaveRef;
+static unsigned g_sunRebases;
+
+int      g_sunFreeze;
+int      g_sunHold;
+static float g_sunHeld[3];
+static int   g_sunHaveHeld;
+int      g_sunSmooth = 1;
+int      g_sunStepMs = 2000, g_sunXfadeMs = 1000;
+#define SUN_XFADE_SNAP 1.0f
+static float    g_xNew[3], g_xOld[3];
+static int      g_xHave, g_xFading;
+static DWORD    g_xAt;
+static U9SunMap g_oldNear, g_oldFar;
+static int      g_oldMaps;
+static float    g_xMix = 1.0f;
+static unsigned g_xSteps;
+static U9SunMap g_frozenNear, g_frozenFar;
+static int      g_frozenMaps;
+#define TRACE_FRAMES 180
+#define TRACE_TEX    512
+static int      g_traceLeft;
+static unsigned g_traceTex[2][TRACE_TEX], g_traceTris[2][TRACE_TEX];
+static double   g_traceSum[2][TRACE_TEX];
+static int      g_traceN[2], g_traceCur;
+static DWORD    g_traceStart;
+static double   g_traceX[2][TRACE_TEX], g_traceY[2][TRACE_TEX];
+static unsigned g_follow;
+typedef struct { unsigned tex, frames, changed, triLo, triHi; double x, y; } TraceSum;
+static TraceSum g_traceSums[TRACE_TEX];
+static int      g_traceSumN;
+static float   *g_followV[2];
+static unsigned g_followN[2], g_followCap;
+
+static void trace_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    int stride, i, c = g_traceCur;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    double s = 0.0;
+    unsigned t;
+    (void)ctx;
+    (void)cutout;
+    double sx = 0.0, sy = 0.0;
+    for (t = first; t < first + count; t++) {
+        const float *f = (const float *)(base + (size_t)t * (size_t)stride);
+        s += (double)f[0] * 1.0 + (double)f[1] * 3.0 + (double)f[6] * 1e5 + (double)f[3] * 7.0 + (double)f[4] * 11.0;
+        sx += f[0];
+        sy += f[1];
+        if (glTex == g_follow && g_followN[c] + 3 <= g_followCap) {
+            float *o = g_followV[c] + g_followN[c];
+            o[0] = f[0]; o[1] = f[1]; o[2] = f[6];
+            g_followN[c] += 3;
+        }
+    }
+    for (i = 0; i < g_traceN[c] && g_traceTex[c][i] != glTex; i++) {}
+    if (i == g_traceN[c]) {
+        if (i == TRACE_TEX) return;
+        g_traceTex[c][i] = glTex;
+        g_traceTris[c][i] = 0;
+        g_traceSum[c][i] = 0.0;
+        g_traceX[c][i] = g_traceY[c][i] = 0.0;
+        g_traceN[c]++;
+    }
+    g_traceTris[c][i] += count / 3;
+    g_traceSum[c][i] += s;
+    g_traceX[c][i] += sx;
+    g_traceY[c][i] += sy;
+}
+
+static TraceSum *trace_sum(unsigned tex)
+{
+    int i;
+    for (i = 0; i < g_traceSumN && g_traceSums[i].tex != tex; i++) {}
+    if (i == g_traceSumN) {
+        if (i == TRACE_TEX) return NULL;
+        memset(&g_traceSums[i], 0, sizeof g_traceSums[i]);
+        g_traceSums[i].tex = tex;
+        g_traceSums[i].triLo = 0xFFFFFFFFu;
+        g_traceSumN++;
+    }
+    return &g_traceSums[i];
+}
+
+static void trace_summary(void)
+{
+    int i, j, shown = 0;
+    for (i = 1; i < g_traceSumN; i++) {
+        TraceSum t = g_traceSums[i];
+        for (j = i; j > 0 && g_traceSums[j - 1].changed < t.changed; j--) g_traceSums[j] = g_traceSums[j - 1];
+        g_traceSums[j] = t;
+    }
+    u9log_line("SUNTRACE summary: %d textures cast; those that changed, most often first", g_traceSumN);
+    for (i = 0; i < g_traceSumN && shown < 80; i++) {
+        const TraceSum *t = &g_traceSums[i];
+        if (!t->changed) continue;
+        u9log_line("SUNTRACE   gl tex %u: changed in %u of %u frames, %u..%u triangles, at screen %d,%d", t->tex,
+                   t->changed, t->frames, t->triLo, t->triHi, (int)t->x, (int)t->y);
+        shown++;
+    }
+}
+
+static void trace_frame(void)
+{
+    int c = g_traceCur, p = c ^ 1, i, j, changed = 0, appeared = 0, gone = 0, shown = 0;
+    unsigned tris = 0;
+    char line[700];
+    int at;
+    g_traceN[c] = 0;
+    u9gl_casters(trace_run, NULL);
+    for (i = 0; i < g_traceN[c]; i++) {
+        TraceSum *ts = trace_sum(g_traceTex[c][i]);
+        tris += g_traceTris[c][i];
+        if (!ts) continue;
+        ts->frames++;
+        if (g_traceTris[c][i] < ts->triLo) ts->triLo = g_traceTris[c][i];
+        if (g_traceTris[c][i] > ts->triHi) ts->triHi = g_traceTris[c][i];
+        ts->x = g_traceX[c][i] / (double)(g_traceTris[c][i] * 3u);
+        ts->y = g_traceY[c][i] / (double)(g_traceTris[c][i] * 3u);
+        if (g_traceLeft < TRACE_FRAMES) {
+            for (j = 0; j < g_traceN[p] && g_traceTex[p][j] != g_traceTex[c][i]; j++) {}
+            if (j < g_traceN[p] && (g_traceTris[p][j] != g_traceTris[c][i] || g_traceSum[p][j] != g_traceSum[c][i]))
+                ts->changed++;
+        }
+    }
+    if (g_follow) {
+        unsigned k, n = g_followN[c] < g_followN[p] ? g_followN[c] : g_followN[p];
+        float dxy = 0.0f, dq = 0.0f;
+        for (k = 0; k + 2 < n; k += 3) {
+            float ex = g_followV[c][k] - g_followV[p][k], ey = g_followV[c][k + 1] - g_followV[p][k + 1];
+            float eq = g_followV[c][k + 2] - g_followV[p][k + 2];
+            if (ex < 0.0f) ex = -ex;
+            if (ey < 0.0f) ey = -ey;
+            if (eq < 0.0f) eq = -eq;
+            if (ex > dxy) dxy = ex;
+            if (ey > dxy) dxy = ey;
+            if (eq > dq) dq = eq;
+        }
+        u9log_line("SUNTRACE     gl tex %u: %u vertices (%u the frame before), largest move %d/1000 px, q %d/1000000%s",
+                   g_follow, g_followN[c] / 3, g_followN[p] / 3, (int)(dxy * 1000.0f), (int)(dq * 1e6f),
+                   g_followN[c] == 0 ? " - NOT CAST this frame" : "");
+        g_followN[p] = 0;
+    }
+    at = wsprintfA(line, "SUNTRACE %3d t+%5u ms: %u casters in %d textures;", TRACE_FRAMES - g_traceLeft,
+                   (unsigned)(u9time_now() - g_traceStart), tris, g_traceN[c]);
+    if (g_traceLeft < TRACE_FRAMES) {
+        for (i = 0; i < g_traceN[c]; i++) {
+            for (j = 0; j < g_traceN[p] && g_traceTex[p][j] != g_traceTex[c][i]; j++) {}
+            if (j == g_traceN[p]) {
+                appeared++;
+                if (shown < 8 && at < 600) { at += wsprintfA(line + at, " +tex%u(%u)", g_traceTex[c][i], g_traceTris[c][i]); shown++; }
+            } else if (g_traceTris[p][j] != g_traceTris[c][i] || g_traceSum[p][j] != g_traceSum[c][i]) {
+                changed++;
+                if (shown < 8 && at < 600) {
+                    at += wsprintfA(line + at, " ~tex%u(%u->%u)", g_traceTex[c][i], g_traceTris[p][j], g_traceTris[c][i]);
+                    shown++;
+                }
+            }
+        }
+        for (j = 0; j < g_traceN[p]; j++) {
+            for (i = 0; i < g_traceN[c] && g_traceTex[c][i] != g_traceTex[p][j]; i++) {}
+            if (i == g_traceN[c]) {
+                gone++;
+                if (shown < 8 && at < 600) { at += wsprintfA(line + at, " -tex%u(%u)", g_traceTex[p][j], g_traceTris[p][j]); shown++; }
+            }
+        }
+        wsprintfA(line + at, "  [%d changed, %d new, %d gone]", changed, appeared, gone);
+    }
+    u9log_line("%s", line);
+    g_traceCur = p;
+    if (--g_traceLeft == 0) {
+        trace_summary();
+        u9log_line("SUNTRACE done");
+    }
+}
+
+void u9shadow_sun_trace(unsigned followTex)
+{
+    g_traceLeft = TRACE_FRAMES;
+    g_traceN[0] = g_traceN[1] = 0;
+    g_traceSumN = 0;
+    g_follow = followTex;
+    g_followN[0] = g_followN[1] = 0;
+    if (followTex && !g_followV[0]) {
+        g_followCap = 3u * 30000u;
+        g_followV[0] = (float *)malloc(g_followCap * sizeof(float));
+        g_followV[1] = (float *)malloc(g_followCap * sizeof(float));
+        if (!g_followV[0] || !g_followV[1]) { free(g_followV[0]); free(g_followV[1]); g_followV[0] = g_followV[1] = NULL; g_followCap = 0; }
+    }
+    g_traceStart = u9time_now();
+    u9log_line("SUNTRACE start: %d frames of the sun's casters, per texture (gl texture ids; 'post pick' names them)",
+               TRACE_FRAMES);
+}
+int      g_waterDepth = 1;
+unsigned g_sunBuilds, g_sunTris;
+int      g_sunCull = 1;
+unsigned g_sunRunsDrawn[2], g_sunRunsCulled[2];
+static uint32_t g_boxFrame = 0xFFFFFFFFu;
+static GLuint g_sunFbo[4], g_sunTex[4], g_sunDepth[4];
+static int    g_sunTexSize[4];
+int      g_sunMemory = 1;
+int      g_sunKeepS = 120;
+float    g_sunAbove = -5000.0f;
+unsigned g_sunMemLive, g_sunMemDrawn, g_sunMemDropped, g_sunMemNew, g_sunMemSkipped;
+static DWORD g_memLogAt;
+static unsigned g_memLogNew, g_memLogDropped;
+
+static int    g_failed, g_loaded;
+static GLuint g_prog, g_fbo, g_cube[U9SHADOW_MAX], g_cubeDepth;
+static int    g_cubeSize;
+static GLint  uProj, uM0, uM1, uM2, uLight, uFs, uFt, uFm, uNf, uMode, uTop, uTex, uCutout, uAlphaRef;
+
+static const char *const k_vs =
+    "#version 120\n"
+    "uniform vec4 u_proj;\n"
+    "uniform vec4 u_m0, u_m1, u_m2;\n"
+    "uniform vec3 u_light;\n"
+    "uniform vec3 u_fs, u_ft, u_fm;\n"
+    "uniform vec2 u_nf;\n"
+    "uniform int  u_mode;\n"
+    "uniform vec4 u_top;\n"
+    "varying vec3 v_rel;\n"
+    "varying float v_h;\n"
+    "void main() {\n"
+    "    vec3 world;\n"
+    "    if (u_mode == 3) {\n"
+    "        world = gl_Vertex.xyz;\n"
+    "        gl_TexCoord[0] = vec4(gl_MultiTexCoord0.xy, 0.0, 1.0);\n"
+    "    } else {\n"
+    "        float q = gl_MultiTexCoord0.w;\n"
+    "        float w = 1.0 / q;\n"
+    "        vec4 cs = vec4((gl_Vertex.x - u_proj.z) * w / u_proj.x, w, (u_proj.w - gl_Vertex.y) * w / u_proj.y, 1.0);\n"
+    "        world = vec3(dot(u_m0, cs), dot(u_m1, cs), dot(u_m2, cs));\n"
+    "        gl_TexCoord[0] = vec4(gl_MultiTexCoord0.xy / q, 0.0, 1.0);\n"
+    "    }\n"
+    "    v_rel = world - u_light;\n"
+    "    v_h = world.z;\n"
+    "    if (u_mode == 0) {\n"
+    "        float ma = dot(u_fm, v_rel);\n"
+    "        float n = u_nf.x, f = u_nf.y;\n"
+    "        gl_Position = vec4(dot(u_fs, v_rel), dot(u_ft, v_rel), ma * (f + n) / (f - n) - 2.0 * f * n / (f - n), ma);\n"
+    "    } else if (u_mode >= 2) {\n"
+    "        gl_Position = vec4(dot(u_fs, v_rel) / u_nf.x, dot(u_ft, v_rel) / u_nf.x, -dot(u_fm, v_rel) / u_nf.y, 1.0);\n"
+    "    } else {\n"
+    "        gl_Position = vec4((world.xy - u_top.xy) / u_top.z, clamp((u_top.w - world.z) / 8192.0, -1.0, 1.0), 1.0);\n"
+    "    }\n"
+    "}\n";
+
+static const char *const k_fs =
+    "#version 120\n"
+    "uniform sampler2D u_tex;\n"
+    "uniform int   u_cutout;\n"
+    "uniform float u_alphaRef;\n"
+    "uniform int   u_mode;\n"
+    "uniform vec4  u_top;\n"
+    "uniform vec2  u_nf;\n"
+    "uniform vec3  u_fm;\n"
+    "varying vec3 v_rel;\n"
+    "varying float v_h;\n"
+    "vec3 hue(float h) {\n"
+    "    return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);\n"
+    "}\n"
+    "void main() {\n"
+    "    if (u_cutout != 0 && texture2D(u_tex, gl_TexCoord[0].st).a <= u_alphaRef) discard;\n"
+    "    if (u_mode == 0) { gl_FragColor = vec4(length(v_rel) / u_nf.y); return; }   /* of the reach */\n"
+    "    if (u_mode >= 2) { gl_FragColor = vec4(0.5 - 0.5 * dot(u_fm, v_rel) / u_nf.y); return; }   /* 0 sunward */\n"
+    "    if (v_h > u_top.w + 128.0) discard;\n"
+    "    float band = abs(fract(v_h / 64.0 - 0.5) - 0.5) < fwidth(v_h / 64.0) ? 0.55 : 1.0;\n"
+    "    gl_FragColor = vec4(hue(v_h / 512.0) * band, 1.0);\n"
+    "}\n";
+
+static void *gl_proc(const char *name)
+{
+    INT_PTR p = (INT_PTR)wglGetProcAddress(name);
+    if (p >= -1 && p <= 3) return NULL;
+    return (void *)p;
+}
+
+static void fail(const char *why)
+{
+    if (!g_failed) u9log_line("GLSHADOW off for this session: %s", why);
+    g_failed = 1;
+}
+
+static GLuint compile(GLenum type, const char *src, const char *what)
+{
+    GLuint s = fCreateShader(type);
+    GLint  ok = 0;
+    if (!s) return 0;
+    fShaderSource(s, 1, &src, NULL);
+    fCompileShader(s);
+    fGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        GLsizei n = 0;
+        fGetShaderInfoLog(s, sizeof log - 1, &n, log);
+        log[n > 0 ? n : 0] = 0;
+        u9log_line("GLSHADOW %s shader did not compile: %s", what, log);
+        fDeleteShader(s);
+        return 0;
+    }
+    return s;
+}
+
+static int load(void)
+{
+    GLuint vs, fs;
+    GLint  ok = 0;
+    if (g_loaded) return !g_failed;
+    g_loaded = 1;
+    fGenFramebuffers        = (GenFramebuffersFn)gl_proc("glGenFramebuffers");
+    fBindFramebuffer        = (BindFramebufferFn)gl_proc("glBindFramebuffer");
+    fFramebufferTexture2D   = (FramebufferTexture2DFn)gl_proc("glFramebufferTexture2D");
+    fCheckFramebufferStatus = (CheckFramebufferStatusFn)gl_proc("glCheckFramebufferStatus");
+    fCreateShader           = (CreateShaderFn)gl_proc("glCreateShader");
+    fShaderSource           = (ShaderSourceFn)gl_proc("glShaderSource");
+    fCompileShader          = (CompileShaderFn)gl_proc("glCompileShader");
+    fGetShaderiv            = (GetivFn)gl_proc("glGetShaderiv");
+    fGetProgramiv           = (GetivFn)gl_proc("glGetProgramiv");
+    fGetShaderInfoLog       = (GetInfoLogFn)gl_proc("glGetShaderInfoLog");
+    fGetProgramInfoLog      = (GetInfoLogFn)gl_proc("glGetProgramInfoLog");
+    fCreateProgram          = (CreateProgramFn)gl_proc("glCreateProgram");
+    fAttachShader           = (AttachShaderFn)gl_proc("glAttachShader");
+    fLinkProgram            = (LinkProgramFn)gl_proc("glLinkProgram");
+    fUseProgram             = (UseProgramFn)gl_proc("glUseProgram");
+    fDeleteShader           = (DeleteFn)gl_proc("glDeleteShader");
+    fGetUniformLocation     = (GetUniformLocationFn)gl_proc("glGetUniformLocation");
+    fUniform1i              = (Uniform1iFn)gl_proc("glUniform1i");
+    fUniform1f              = (Uniform1fFn)gl_proc("glUniform1f");
+    fUniform2f              = (Uniform2fFn)gl_proc("glUniform2f");
+    fUniform3f              = (Uniform3fFn)gl_proc("glUniform3f");
+    fUniform4f              = (Uniform4fFn)gl_proc("glUniform4f");
+    fActiveTexture          = (ActiveTextureFn)gl_proc("glActiveTexture");
+    if (!fGenFramebuffers || !fBindFramebuffer || !fFramebufferTexture2D || !fCheckFramebufferStatus ||
+        !fCreateShader || !fShaderSource || !fCompileShader || !fGetShaderiv || !fGetProgramiv ||
+        !fGetShaderInfoLog || !fGetProgramInfoLog || !fCreateProgram || !fAttachShader || !fLinkProgram ||
+        !fUseProgram || !fDeleteShader || !fGetUniformLocation || !fUniform1i || !fUniform1f ||
+        !fUniform2f || !fUniform3f || !fUniform4f || !fActiveTexture) {
+        fail("missing GL entry points");
+        return 0;
+    }
+    vs = compile(GL_VERTEX_SHADER, k_vs, "caster vertex");
+    fs = vs ? compile(GL_FRAGMENT_SHADER, k_fs, "caster fragment") : 0;
+    if (!vs || !fs) {
+        if (vs) fDeleteShader(vs);
+        fail("the caster shader did not compile");
+        return 0;
+    }
+    g_prog = fCreateProgram();
+    fAttachShader(g_prog, vs);
+    fAttachShader(g_prog, fs);
+    fLinkProgram(g_prog);
+    fDeleteShader(vs);
+    fDeleteShader(fs);
+    fGetProgramiv(g_prog, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        GLsizei n = 0;
+        fGetProgramInfoLog(g_prog, sizeof log - 1, &n, log);
+        log[n > 0 ? n : 0] = 0;
+        u9log_line("GLSHADOW program did not link: %s", log);
+        fail("the caster program did not link");
+        return 0;
+    }
+    uProj     = fGetUniformLocation(g_prog, "u_proj");
+    uM0       = fGetUniformLocation(g_prog, "u_m0");
+    uM1       = fGetUniformLocation(g_prog, "u_m1");
+    uM2       = fGetUniformLocation(g_prog, "u_m2");
+    uLight    = fGetUniformLocation(g_prog, "u_light");
+    uFs       = fGetUniformLocation(g_prog, "u_fs");
+    uFt       = fGetUniformLocation(g_prog, "u_ft");
+    uFm       = fGetUniformLocation(g_prog, "u_fm");
+    uNf       = fGetUniformLocation(g_prog, "u_nf");
+    uMode     = fGetUniformLocation(g_prog, "u_mode");
+    uTop      = fGetUniformLocation(g_prog, "u_top");
+    uTex      = fGetUniformLocation(g_prog, "u_tex");
+    uCutout   = fGetUniformLocation(g_prog, "u_cutout");
+    uAlphaRef = fGetUniformLocation(g_prog, "u_alphaRef");
+    u9log_line("GLSHADOW caster program ready");
+    return 1;
+}
+
+static int make_cube(int slot)
+{
+    int f, i, s = g_shadowSize;
+    GLenum status;
+    if (g_cubeDepth && g_cubeSize != s) {
+        for (i = 0; i < U9SHADOW_MAX; i++)
+            if (g_cube[i]) {
+                glDeleteTextures(1, &g_cube[i]);
+                u9metrics_tex_destroyed((unsigned)(g_cubeSize * g_cubeSize * 4 * 6));
+                g_cube[i] = 0;
+            }
+        glDeleteTextures(1, &g_cubeDepth);
+        u9metrics_tex_destroyed((unsigned)(g_cubeSize * g_cubeSize * 4));
+        g_cubeDepth = 0;
+    }
+    if (g_cube[slot] && g_cubeDepth) return 1;
+    if (!g_cube[slot]) {
+        glGenTextures(1, &g_cube[slot]);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, g_cube[slot]);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        for (f = 0; f < 6; f++)
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_R32F, s, s, 0, GL_RED_, GL_FLOAT, NULL);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+        u9metrics_tex_created((unsigned)(s * s * 4 * 6));
+        u9log_line("GLSHADOW cube %d: %d x %d x 6, R32F distances", slot, s, s);
+    }
+    if (g_cubeDepth) return 1;
+    glGenTextures(1, &g_cubeDepth);
+    glBindTexture(GL_TEXTURE_2D, g_cubeDepth);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, s, s, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    g_cubeSize = s;
+    u9metrics_tex_created((unsigned)(s * s * 4));
+    if (!g_fbo) fGenFramebuffers(1, &g_fbo);
+    fBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+    fFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X, g_cube[slot], 0);
+    fFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, g_cubeDepth, 0);
+    status = fCheckFramebufferStatus(GL_FRAMEBUFFER);
+    fBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        u9log_line("GLSHADOW cube %dx%d incomplete: status 0x%04X", s, s, (unsigned)status);
+        fail("the shadow cube was incomplete");
+        return 0;
+    }
+    return 1;
+}
+
+#define MAX_SKIP 16384
+typedef struct {
+    const U9FrameView *v;
+    float    light[3], reach;
+    unsigned tris, idx, fixtures, drawn, culled;
+    int      useSkip, face;
+    int      noFixture;
+    int      sunMap;
+    float    sc[3], spr[3], spu[3], shalf, cam[2], castReach2;
+} DrawCtx;
+static unsigned char g_skip[MAX_SKIP];
+static unsigned      g_part[MAX_SKIP][2];
+static GLuint       *g_index;
+static unsigned      g_indexN, g_indexCap;
+static float    g_box[MAX_SKIP][6];
+static unsigned g_boxTris[MAX_SKIP];
+static unsigned g_nBox;
+unsigned g_shadowRunsDrawn, g_shadowRunsCulled;
+
+static int world_of(const U9FrameView *v, const float *f, float out[3])
+{
+    float q = f[6], w, cs[3];
+    int k;
+    if (q == 0.0f) return 0;
+    w = 1.0f / q;
+    cs[0] = (f[0] - v->cx) * w / v->sx;
+    cs[1] = w;
+    cs[2] = (v->cy - f[1]) * w / v->sy;
+    for (k = 0; k < 3; k++)
+        out[k] = v->m[k * 4] * cs[0] + v->m[k * 4 + 1] * cs[1] + v->m[k * 4 + 2] * cs[2] + v->m[k * 4 + 3];
+    return 1;
+}
+
+static void box_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    DrawCtx *c = (DrawCtx *)ctx;
+    int stride, k;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    float *lo, *hi, wp[3];
+    unsigned i, at = c->idx++;
+    (void)glTex; (void)cutout;
+    if (at >= MAX_SKIP) return;
+    lo = g_box[at]; hi = g_box[at] + 3;
+    for (k = 0; k < 3; k++) { lo[k] = 1e30f; hi[k] = -1e30f; }
+    g_boxTris[at] = count / 3;
+    g_nBox = at + 1;
+    for (i = first; i < first + count; i++) {
+        if (!world_of(c->v, (const float *)(base + (size_t)i * (size_t)stride), wp)) continue;
+        for (k = 0; k < 3; k++) {
+            if (wp[k] < lo[k]) lo[k] = wp[k];
+            if (wp[k] > hi[k]) hi[k] = wp[k];
+        }
+    }
+}
+
+void u9shadow_new_frame(const U9FrameView *v)
+{
+    DrawCtx ctx;
+    g_nBox = 0;
+    if (!g_shadowOn || !v || !v->valid) return;
+    memset(&ctx, 0, sizeof ctx);
+    ctx.v = v;
+    u9gl_casters(box_run, &ctx);
+    g_boxFrame = u9log_frame();
+}
+
+void u9shadow_report_near(const float pos[3], float within, void (*line)(const char *fmt, ...))
+{
+    unsigned i, j, n = 0, best[12];
+    float needs[12];
+    int k;
+    for (i = 0; i < g_nBox; i++) {
+        const float *lo = g_box[i], *hi = g_box[i] + 3;
+        float need = 0.0f, e;
+        if (lo[0] > hi[0]) continue;
+        for (k = 0; k < 3; k++) {
+            e = pos[k] < lo[k] ? lo[k] - pos[k] : pos[k] > hi[k] ? pos[k] - hi[k] : 0.0f;
+            if (e > need) need = e;
+        }
+        if (need > within || (n == 12 && need >= needs[11])) continue;
+        j = n < 12 ? n++ : 11;
+        while (j > 0 && needs[j - 1] > need) { needs[j] = needs[j - 1]; best[j] = best[j - 1]; j--; }
+        needs[j] = need;
+        best[j] = i;
+    }
+    for (j = 0; j < n; j++) {
+        const float *lo = g_box[best[j]], *hi = g_box[best[j]] + 3;
+        int col = g_shadowColumn > 0.0f &&
+                  pos[0] >= lo[0] - g_shadowColumn && pos[0] <= hi[0] + g_shadowColumn &&
+                  pos[1] >= lo[1] - g_shadowColumn && pos[1] <= hi[1] + g_shadowColumn;
+        line("GLSHADOW near the light: run %u, %u triangles, box %.0f,%.0f,%.0f .. %.0f,%.0f,%.0f, the light %.0f outside it"
+             " (%s)", best[j], g_boxTris[best[j]], lo[0], lo[1], lo[2], hi[0], hi[1], hi[2], needs[j],
+             needs[j] <= g_shadowNear ? "fixture tested" : col ? "column tested" : "casts whole");
+    }
+}
+
+static float edge2(const float p[3], const float q[3])
+{
+    float x = p[0] - q[0], y = p[1] - q[1], z = p[2] - q[2];
+    return x * x + y * y + z * z;
+}
+
+static int sits_on(const float L[3], const float a[3], const float b[3], const float d[3])
+{
+    float u[3], w[3], n[3], len, below;
+    int k;
+    for (k = 0; k < 3; k++) { u[k] = b[k] - a[k]; w[k] = d[k] - a[k]; }
+    n[0] = u[1] * w[2] - u[2] * w[1];
+    n[1] = u[2] * w[0] - u[0] * w[2];
+    n[2] = u[0] * w[1] - u[1] * w[0];
+    len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (len < 1e-6f || fabsf(n[2]) < 0.9f * len) return 0;
+    below = L[2] - (a[2] - (n[0] * (L[0] - a[0]) + n[1] * (L[1] - a[1])) / n[2]);
+    return below >= 0.0f && below <= g_shadowNear;
+}
+
+static void classify_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    DrawCtx *c = (DrawCtx *)ctx;
+    const float *lo, *hi;
+    int k, stride;
+    const char *base;
+    float r2 = g_shadowFixture * 0.5f * g_shadowFixture * 0.5f, rc2 = g_shadowColumn * g_shadowColumn;
+    float rp2 = g_shadowPart * g_shadowPart;
+    float ra, rb, rd;
+    int inRun, column;
+    unsigned at = c->idx++, t, kept = 0, off;
+    (void)glTex; (void)cutout;
+    if (at >= MAX_SKIP) return;
+    g_skip[at] = 0;
+    if (at >= g_nBox || c->noFixture) return;
+    lo = g_box[at]; hi = g_box[at] + 3;
+    inRun = 1;
+    for (k = 0; k < 3; k++)
+        if (c->light[k] < lo[k] - g_shadowNear || c->light[k] > hi[k] + g_shadowNear) inRun = 0;
+    column = g_shadowColumn > 0.0f;
+    for (k = 0; k < 2; k++)
+        if (c->light[k] < lo[k] - g_shadowColumn || c->light[k] > hi[k] + g_shadowColumn) column = 0;
+    if (!inRun && !column) return;
+    if (g_indexN + count > g_indexCap) {
+        unsigned cap = (g_indexN + count) * 2 + 4096;
+        GLuint *p = (GLuint *)realloc(g_index, cap * sizeof *p);
+        if (!p) return;
+        g_index = p;
+        g_indexCap = cap;
+    }
+    base = (const char *)u9gl_caster_vertices(&stride);
+    off = g_indexN;
+    for (t = first; t + 2 < first + count; t += 3) {
+        float a[3], b[3], d[3], cx, cy;
+        if (!world_of(c->v, (const float *)(base + (size_t)t * (size_t)stride), a) ||
+            !world_of(c->v, (const float *)(base + (size_t)(t + 1) * (size_t)stride), b) ||
+            !world_of(c->v, (const float *)(base + (size_t)(t + 2) * (size_t)stride), d)) continue;
+        ra = (a[0] - c->light[0]) * (a[0] - c->light[0]) + (a[1] - c->light[1]) * (a[1] - c->light[1]);
+        rb = (b[0] - c->light[0]) * (b[0] - c->light[0]) + (b[1] - c->light[1]) * (b[1] - c->light[1]);
+        rd = (d[0] - c->light[0]) * (d[0] - c->light[0]) + (d[1] - c->light[1]) * (d[1] - c->light[1]);
+        cx = (a[0] + b[0] + d[0]) / 3.0f - c->light[0];
+        cy = (a[1] + b[1] + d[1]) / 3.0f - c->light[1];
+        if ((inRun && cx * cx + cy * cy < r2 && ra < r2 && rb < r2 && rd < r2 &&
+             edge2(a, b) < rp2 && edge2(b, d) < rp2 && edge2(d, a) < rp2) ||
+            (column && ra < rc2 && rb < rc2 && rd < rc2) ||
+            (inRun && sits_on(c->light, a, b, d))) {
+            c->fixtures++;
+            continue;
+        }
+        g_index[g_indexN++] = t;
+        g_index[g_indexN++] = t + 1;
+        g_index[g_indexN++] = t + 2;
+        kept++;
+    }
+    if (kept * 3 == count) { g_indexN = off; return; }
+    g_skip[at] = 1;
+    g_part[at][0] = off;
+    g_part[at][1] = kept * 3;
+}
+
+static int sun_box_wanted(const DrawCtx *c, const float *lo, const float *hi)
+{
+    int k, out[4] = { 1, 1, 1, 1 };
+    float dx, dy;
+    if (c->castReach2 > 0.0f) {
+        dx = c->cam[0] < lo[0] ? lo[0] - c->cam[0] : c->cam[0] > hi[0] ? c->cam[0] - hi[0] : 0.0f;
+        dy = c->cam[1] < lo[1] ? lo[1] - c->cam[1] : c->cam[1] > hi[1] ? c->cam[1] - hi[1] : 0.0f;
+        if (dx * dx + dy * dy > c->castReach2) return 0;
+    }
+    for (k = 0; k < 8; k++) {
+        float p[3], s, t;
+        p[0] = (k & 1 ? hi[0] : lo[0]) - c->sc[0];
+        p[1] = (k & 2 ? hi[1] : lo[1]) - c->sc[1];
+        p[2] = (k & 4 ? hi[2] : lo[2]) - c->sc[2];
+        s = p[0] * c->spr[0] + p[1] * c->spr[1] + p[2] * c->spr[2];
+        t = p[0] * c->spu[0] + p[1] * c->spu[1] + p[2] * c->spu[2];
+        if (s >= -c->shalf) out[0] = 0;
+        if (s <= c->shalf)  out[1] = 0;
+        if (t >= -c->shalf) out[2] = 0;
+        if (t <= c->shalf)  out[3] = 0;
+    }
+    return !(out[0] || out[1] || out[2] || out[3]);
+}
+
+static void draw_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    DrawCtx *c = (DrawCtx *)ctx;
+    int cut = cutout && g_shadowCutouts && glTex, part = 0;
+    unsigned at = c->idx++;
+    if (c->sunMap && at < g_nBox && !sun_box_wanted(c, g_box[at], g_box[at] + 3)) { c->culled++; return; }
+    if (c->useSkip && at < MAX_SKIP && g_skip[at]) {
+        if (!g_part[at][1]) return;
+        part = 1;
+    }
+    if (c->useSkip && at < g_nBox) {
+        const float *lo = g_box[at], *hi = g_box[at] + 3;
+        float d2 = 0.0f, e, ahead;
+        int k, ax = c->face / 2;
+        for (k = 0; k < 3; k++) {
+            e = lo[k] > c->light[k] ? lo[k] - c->light[k] : c->light[k] > hi[k] ? c->light[k] - hi[k] : 0.0f;
+            d2 += e * e;
+        }
+        ahead = (c->face & 1) ? c->light[ax] - lo[ax] : hi[ax] - c->light[ax];
+        if (d2 > c->reach * c->reach || ahead < 4.0f) { c->culled++; return; }
+    }
+    c->drawn++;
+    fUniform1i(uCutout, cut);
+    if (cut) glBindTexture(GL_TEXTURE_2D, glTex);
+    if (part) {
+        glDrawElements(GL_TRIANGLES, (GLsizei)g_part[at][1], GL_UNSIGNED_INT, g_index + g_part[at][0]);
+        c->tris += g_part[at][1] / 3;
+    } else {
+        glDrawArrays(GL_TRIANGLES, (GLint)first, (GLsizei)count);
+        c->tris += count / 3;
+    }
+}
+
+static void begin_casters(const U9FrameView *v)
+{
+    int stride;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    glDisableClientState(GL_COLOR_ARRAY);
+    glVertexPointer(3, GL_FLOAT, stride, base);
+    glTexCoordPointer(4, GL_FLOAT, stride, base + 12);
+    fUseProgram(g_prog);
+    fUniform4f(uProj, v->sx, v->sy, v->cx, v->cy);
+    fUniform4f(uM0, v->m[0], v->m[1], v->m[2], v->m[3]);
+    fUniform4f(uM1, v->m[4], v->m[5], v->m[6], v->m[7]);
+    fUniform4f(uM2, v->m[8], v->m[9], v->m[10], v->m[11]);
+    fUniform1i(uTex, 0);
+    fUniform1f(uAlphaRef, (float)u9cfg_int("alpha_ref", 128) / 255.0f);
+    fActiveTexture(GL_TEXTURE0);
+    glEnable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_FOG);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+static void end_casters(void)
+{
+    fUseProgram(0);
+    glPopClientAttrib();
+}
+
+GLuint u9shadow_build(const U9FrameView *v, const float pos[3], float reach, int slot, int fixture)
+{
+    static const float S[6][3] = { {0,0,-1}, {0,0,1}, {1,0,0}, {1,0,0}, {1,0,0}, {-1,0,0} };
+    static const float T[6][3] = { {0,-1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}, {0,-1,0}, {0,-1,0} };
+    static const float M[6][3] = { {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1} };
+    DrawCtx ctx;
+    int f;
+    if (!g_shadowOn || g_failed || !v || !v->valid || slot < 0 || slot >= U9SHADOW_MAX) return 0;
+    if (!load()) return 0;
+    if (g_shadowSize < 64) g_shadowSize = 64;
+    if (g_shadowSize > 2048) g_shadowSize = 2048;
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    if (!make_cube(slot)) { glPopAttrib(); return 0; }
+    fBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+    glViewport(0, 0, g_cubeSize, g_cubeSize);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearDepth(1.0);
+    begin_casters(v);
+    fUniform1i(uMode, 0);
+    fUniform3f(uLight, pos[0], pos[1], pos[2]);
+    fUniform2f(uNf, 4.0f, reach > 16.0f ? reach : 16.0f);
+    memset(&ctx, 0, sizeof ctx);
+    ctx.v = v;
+    ctx.light[0] = pos[0]; ctx.light[1] = pos[1]; ctx.light[2] = pos[2];
+    ctx.reach = reach;
+    ctx.noFixture = !fixture;
+    g_indexN = 0;
+    u9gl_casters(classify_run, &ctx);
+    g_shadowFixtures = ctx.fixtures;
+    ctx.useSkip = 1;
+    for (f = 0; f < 6; f++) {
+        ctx.idx = 0;
+        ctx.face = f;
+        fFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, g_cube[slot], 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        fUniform3f(uFs, S[f][0], S[f][1], S[f][2]);
+        fUniform3f(uFt, T[f][0], T[f][1], T[f][2]);
+        fUniform3f(uFm, M[f][0], M[f][1], M[f][2]);
+        u9gl_casters(draw_run, &ctx);
+    }
+    end_casters();
+    fBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glPopAttrib();
+    g_shadowBuilds++;
+    g_shadowTris = ctx.tris;
+    g_shadowRunsDrawn = ctx.drawn;
+    g_shadowRunsCulled = ctx.culled;
+    return g_cube[slot];
+}
+
+static int make_sun(int i)
+{
+    int s = g_sunSize;
+    GLenum status;
+    if (g_sunTex[i] && g_sunTexSize[i] == s) return 1;
+    if (g_sunTex[i]) {
+        glDeleteTextures(1, &g_sunTex[i]);
+        glDeleteTextures(1, &g_sunDepth[i]);
+        u9metrics_tex_destroyed((unsigned)(g_sunTexSize[i] * g_sunTexSize[i] * 8));
+        g_sunTex[i] = g_sunDepth[i] = 0;
+    }
+    glGenTextures(1, &g_sunTex[i]);
+    glBindTexture(GL_TEXTURE_2D, g_sunTex[i]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_RED_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, s, s, 0, GL_RED_, GL_FLOAT, NULL);
+    glGenTextures(1, &g_sunDepth[i]);
+    glBindTexture(GL_TEXTURE_2D, g_sunDepth[i]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, s, s, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    g_sunTexSize[i] = s;
+    u9metrics_tex_created((unsigned)(s * s * 8));
+    if (!g_sunFbo[i]) fGenFramebuffers(1, &g_sunFbo[i]);
+    fBindFramebuffer(GL_FRAMEBUFFER, g_sunFbo[i]);
+    fFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_sunTex[i], 0);
+    fFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, g_sunDepth[i], 0);
+    status = fCheckFramebufferStatus(GL_FRAMEBUFFER);
+    fBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        u9log_line("GLSHADOW sun map %d, %dx%d incomplete: status 0x%04X", i, s, s, (unsigned)status);
+        fail("the sun map was incomplete");
+        return 0;
+    }
+    u9log_line("GLSHADOW sun map %d: %d x %d, R32F", i, s, s);
+    return 1;
+}
+
+static void cross3(const float a[3], const float b[3], float out[3])
+{
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+static void unit3(float a[3])
+{
+    float l = (float)sqrt((double)(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]));
+    if (l > 1e-6f) { a[0] /= l; a[1] /= l; a[2] /= l; }
+}
+
+#define SUN_MEM_MAX  65536
+#define SUN_MEM_HASH (1 << 17)
+typedef struct {
+    float    p[3][3], st[3][2], area;
+    unsigned keyA, keyB, frame, partial;
+    DWORD    seen;
+    GLuint   tex;
+    unsigned char cutout, live;
+} SunTri;
+static SunTri *g_mem;
+static int    *g_memHash;
+static int     g_memN, g_memDead;
+static unsigned g_memFrame;
+static unsigned g_memTick;
+#define SUN_MEM_EVERY 4
+static float   g_memCam[3];
+static int     g_memHaveCam;
+static SunTri **g_memList;
+static float   *g_memVtx, *g_memTc;
+static int      g_memListN, g_memCap;
+static unsigned char *g_memFresh;
+static float   *g_memVtxB, *g_memTcB;
+static int      g_memListB, g_memRunStartB[SUN_MEM_MAX + 1];
+static int      g_memBetween;
+static int      g_memPassNow;
+
+static void mem_clear(void)
+{
+    g_memN = g_memDead = g_memListN = 0;
+    if (g_memHash) memset(g_memHash, 0, SUN_MEM_HASH * sizeof *g_memHash);
+}
+
+static unsigned mem_slot(unsigned a)
+{
+    return (a * 2654435761u) & (SUN_MEM_HASH - 1);
+}
+
+static void mem_rehash(void)
+{
+    int i, n = 0;
+    for (i = 0; i < g_memN; i++) if (g_mem[i].live) g_mem[n++] = g_mem[i];
+    g_memN = n;
+    g_memDead = 0;
+    memset(g_memHash, 0, SUN_MEM_HASH * sizeof *g_memHash);
+    for (i = 0; i < g_memN; i++) {
+        unsigned s = mem_slot(g_mem[i].keyA);
+        while (g_memHash[s]) s = (s + 1) & (SUN_MEM_HASH - 1);
+        g_memHash[s] = i + 1;
+    }
+}
+
+typedef struct {
+    const U9FrameView *v;
+    float camX, camY, camZ, reach2;
+    DWORD now;
+} MemCtx;
+
+#define SUN_MEM_SHADOW_REACH 2000.0f
+static float mem_reach(float range)
+{
+    float r = range * 1.5f;
+    if (g_sunFadeTo > g_sunFadeFrom && g_sunFadeTo + SUN_MEM_SHADOW_REACH < r) r = g_sunFadeTo + SUN_MEM_SHADOW_REACH;
+    return r;
+}
+
+static void mem_collect(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    MemCtx *c = (MemCtx *)ctx;
+    int stride;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    float edgeX = c->v->engineW - 1.5f, edgeY = c->v->engineH - 1.5f;
+    unsigned t;
+    for (t = first; t + 2 < first + count; t += 3) {
+        float w[3][3], st[3][2], e1[3], e2[3], n[3], area, scale;
+        unsigned a = 2166136261u, b = 16777619u, s;
+        int k, q, clipped = 0;
+        const float *f[3];
+        for (k = 0; k < 3; k++) {
+            f[k] = (const float *)(base + (size_t)(t + (unsigned)k) * (size_t)stride);
+            if (!world_of(c->v, f[k], w[k]) || f[k][6] == 0.0f) break;
+            st[k][0] = f[k][3] / f[k][6];
+            st[k][1] = f[k][4] / f[k][6];
+            if (f[k][0] < 1.5f || f[k][0] > edgeX || f[k][1] < 1.5f || f[k][1] > edgeY) clipped = 1;
+        }
+        if (k < 3) continue;
+        if ((w[0][2] + w[1][2] + w[2][2]) / 3.0f <= c->camZ + g_sunAbove) continue;
+        {
+            float dx = (w[0][0] + w[1][0] + w[2][0]) / 3.0f - c->camX, dy = (w[0][1] + w[1][1] + w[2][1]) / 3.0f - c->camY;
+            if (dx * dx + dy * dy > c->reach2) continue;
+        }
+        for (k = 0; k < 3; k++) { e1[k] = w[1][k] - w[0][k]; e2[k] = w[2][k] - w[0][k]; }
+        cross3(e1, e2, n);
+        area = 0.5f * (float)sqrt((double)(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]));
+        if (clipped && area < 64.0f) { g_sunMemSkipped++; continue; }
+        scale = clipped ? 1.0f / 32.0f : 0.25f;
+        for (k = 0; k < 9; k++) {
+            {
+                float f = w[k / 3][k % 3] * scale;
+                q = (int)f;
+                q -= f < (float)q;
+            }
+            a = (a ^ (unsigned)q) * 16777619u;
+            b = (b + (unsigned)q) * 2246822519u;
+        }
+        b ^= glTex ^ (clipped ? 0x9E3779B9u : 0u);
+        for (s = mem_slot(a); g_memHash[s]; s = (s + 1) & (SUN_MEM_HASH - 1)) {
+            SunTri *e = &g_mem[g_memHash[s] - 1];
+            if (e->keyA == a && e->keyB == b) break;
+        }
+        if (!g_memHash[s]) {
+            if (g_memN >= SUN_MEM_MAX) continue;
+            g_memHash[s] = ++g_memN;
+            g_mem[g_memN - 1].keyA = a;
+            g_mem[g_memN - 1].keyB = b;
+            g_mem[g_memN - 1].live = 0;
+            g_sunMemNew++;
+        }
+        {
+            SunTri *e = &g_mem[g_memHash[s] - 1];
+            if (e->live && clipped && area < e->area * 0.9f) {
+                e->seen = c->now;
+                e->partial = g_memFrame;
+                continue;
+            }
+            e->partial = 0;
+            e->live = 1;
+            memcpy(e->p, w, sizeof w);
+            memcpy(e->st, st, sizeof st);
+            e->area = area;
+            e->tex = glTex;
+            e->cutout = (unsigned char)(cutout != 0);
+            e->frame = g_memFrame;
+            e->seen = c->now;
+        }
+    }
+}
+
+static int on_screen(const U9FrameView *v, const float p[3])
+{
+    float d[3], cx, cy, cz, ex, ey, mx = v->engineW * 0.03f, my = v->engineH * 0.03f;
+    d[0] = p[0] - v->m[3]; d[1] = p[1] - v->m[7]; d[2] = p[2] - v->m[11];
+    cx = v->m[0] * d[0] + v->m[4] * d[1] + v->m[8] * d[2];
+    cy = v->m[1] * d[0] + v->m[5] * d[1] + v->m[9] * d[2];
+    cz = v->m[2] * d[0] + v->m[6] * d[1] + v->m[10] * d[2];
+    if (cy < 32.0f || cy > v->zFar * 0.9f) return 0;
+    ex = v->cx + cx * v->sx / cy;
+    ey = v->cy - cz * v->sy / cy;
+    return ex > mx && ex < v->engineW - mx && ey > my && ey < v->engineH - my;
+}
+
+static int mem_cmp(const void *x, const void *y)
+{
+    const SunTri *a = *(const SunTri *const *)x, *b = *(const SunTri *const *)y;
+    return a->tex < b->tex ? -1 : a->tex > b->tex;
+}
+
+static void mem_runs(void);
+
+#define MEM_GROUP_TEX  1024
+#define MEM_GROUP_HASH 2048
+static int mem_group(int n)
+{
+    static GLuint key[MEM_GROUP_HASH];
+    static int    slot[MEM_GROUP_HASH], start[MEM_GROUP_TEX + 1];
+    static SunTri **tmp;
+    static int    tmpCap;
+    static unsigned char *bucket;
+    int i, k = 0;
+    if (tmpCap < n) {
+        SunTri **t2 = (SunTri **)realloc(tmp, (size_t)n * sizeof *t2);
+        unsigned char *b2;
+        if (!t2) return 0;
+        tmp = t2;
+        b2 = (unsigned char *)realloc(bucket, (size_t)n * 2);
+        if (!b2) return 0;
+        bucket = b2;
+        tmpCap = n;
+    }
+    memset(slot, 0, sizeof slot);
+    memset(start, 0, sizeof start);
+    for (i = 0; i < n; i++) {
+        GLuint t = g_memList[i]->tex;
+        unsigned s = (t * 2654435761u) & (MEM_GROUP_HASH - 1);
+        while (slot[s] && key[s] != t) s = (s + 1) & (MEM_GROUP_HASH - 1);
+        if (!slot[s]) {
+            if (k == MEM_GROUP_TEX) return 0;
+            key[s] = t;
+            slot[s] = ++k;
+        }
+        bucket[i * 2] = (unsigned char)((slot[s] - 1) & 0xFF);
+        bucket[i * 2 + 1] = (unsigned char)((slot[s] - 1) >> 8);
+        start[slot[s]]++;
+    }
+    for (i = 1; i <= k; i++) start[i] += start[i - 1];
+    for (i = 0; i < n; i++) {
+        int b = bucket[i * 2] | (bucket[i * 2 + 1] << 8);
+        tmp[start[b]++] = g_memList[i];
+    }
+    memcpy(g_memList, tmp, (size_t)n * sizeof *g_memList);
+    return 1;
+}
+
+static void mem_update(const U9FrameView *v, float range)
+{
+    DWORD now = u9time_now();
+    float reach = mem_reach(range), r2 = reach * reach;
+    int i, n = 0, j, full = g_memN > SUN_MEM_MAX - 4096;
+    float camAt[3];
+    int inRoom;
+    camAt[0] = v->m[3]; camAt[1] = v->m[7]; camAt[2] = v->m[11];
+    inRoom = u9spaces_at(camAt, NULL, 0, NULL) >= 0;
+    g_memListN = 0;
+    if (g_memCap < g_memN) {
+        int nc = g_memN + 4096;
+        SunTri **l2 = (SunTri **)realloc(g_memList, (size_t)nc * sizeof *l2);
+        float *v2 = (float *)realloc(g_memVtx, (size_t)nc * 9 * sizeof *v2);
+        float *t2 = (float *)realloc(g_memTc, (size_t)nc * 6 * sizeof *t2);
+        unsigned char *f2 = (unsigned char *)realloc(g_memFresh, (size_t)nc);
+        float *vb = (float *)realloc(g_memVtxB, (size_t)nc * 9 * sizeof *vb);
+        float *tb = (float *)realloc(g_memTcB, (size_t)nc * 6 * sizeof *tb);
+        if (l2) g_memList = l2;
+        if (v2) g_memVtx = v2;
+        if (t2) g_memTc = t2;
+        if (f2) g_memFresh = f2;
+        if (vb) g_memVtxB = vb;
+        if (tb) g_memTcB = tb;
+        if (!l2 || !v2 || !t2 || !f2 || !vb || !tb) return;
+        g_memCap = nc;
+    }
+    g_sunMemLive = 0;
+    for (i = 0; i < g_memN; i++) {
+        SunTri *e = &g_mem[i];
+        float mid[3], dx, dy;
+        if (!e->live) continue;
+        if (e->frame == g_memFrame) {
+            g_sunMemLive++;
+            g_memList[n++] = e;
+            continue;
+        }
+        for (j = 0; j < 3; j++) mid[j] = (e->p[0][j] + e->p[1][j] + e->p[2][j]) / 3.0f;
+        dx = mid[0] - v->m[3]; dy = mid[1] - v->m[7];
+        if (dx * dx + dy * dy > r2 || (!inRoom && e->partial != g_memFrame && on_screen(v, mid)) ||
+            (full && now - e->seen > (DWORD)g_sunKeepS * 1000u)) {
+            e->live = 0;
+            g_memDead++;
+            g_sunMemDropped++;
+            continue;
+        }
+        g_sunMemLive++;
+        g_memList[n++] = e;
+    }
+    g_sunMemDrawn = (unsigned)n;
+    if (n) {
+        if (!mem_group(n)) qsort(g_memList, (size_t)n, sizeof *g_memList, mem_cmp);
+        for (i = 0; i < n; i++) {
+            memcpy(g_memVtx + i * 9, g_memList[i]->p, 9 * sizeof(float));
+            memcpy(g_memTc + i * 6, g_memList[i]->st, 6 * sizeof(float));
+            g_memFresh[i] = g_memList[i]->frame == g_memFrame;
+        }
+    }
+    g_memListN = n;
+    mem_runs();
+    if ((g_memDead > g_memN / 2 && g_memDead > 1024) || (g_memDead && g_memN > SUN_MEM_MAX - 1024))
+        mem_rehash();
+}
+
+static GLuint g_memRunTex[SUN_MEM_MAX];
+static int    g_memRunStart[SUN_MEM_MAX + 1], g_memRunCut[SUN_MEM_MAX], g_memRuns;
+
+static void mem_runs(void)
+{
+    int i, j;
+    g_memRuns = 0;
+    for (i = 0; i < g_memListN; i = j) {
+        for (j = i + 1; j < g_memListN && g_memList[j]->tex == g_memList[i]->tex &&
+                        g_memList[j]->cutout == g_memList[i]->cutout; j++) {}
+        g_memRunTex[g_memRuns] = g_memList[i]->tex;
+        g_memRunCut[g_memRuns] = g_memList[i]->cutout && g_shadowCutouts && g_memList[i]->tex;
+        g_memRunStart[g_memRuns] = i;
+        g_memRuns++;
+    }
+    g_memRunStart[g_memRuns] = g_memListN;
+}
+
+static void mem_between(const U9FrameView *v, int pass)
+{
+    int r, i, n = 0;
+    g_memBetween = !pass && g_memListN && g_memFresh && g_memVtxB && g_memTcB;
+    if (!g_memBetween) return;
+    for (r = 0; r < g_memRuns; r++) {
+        g_memRunStartB[r] = n;
+        for (i = g_memRunStart[r]; i < g_memRunStart[r + 1]; i++) {
+            const float *p = g_memVtx + i * 9;
+            float mid[3];
+            int k;
+            if (g_memFresh[i]) {
+                for (k = 0; k < 3; k++) mid[k] = (p[k] + p[3 + k] + p[6 + k]) / 3.0f;
+                if (on_screen(v, mid)) continue;
+            }
+            memcpy(g_memVtxB + n * 9, p, 9 * sizeof(float));
+            memcpy(g_memTcB + n * 6, g_memTc + i * 6, 6 * sizeof(float));
+            n++;
+        }
+    }
+    g_memRunStartB[g_memRuns] = n;
+    g_memListB = n;
+}
+
+static void mem_render(void)
+{
+    int r;
+    const int *start = g_memBetween ? g_memRunStartB : g_memRunStart;
+    if (!(g_memBetween ? g_memListB : g_memListN)) return;
+    fUniform1i(uMode, 3);
+    glVertexPointer(3, GL_FLOAT, 0, g_memBetween ? g_memVtxB : g_memVtx);
+    glTexCoordPointer(2, GL_FLOAT, 0, g_memBetween ? g_memTcB : g_memTc);
+    for (r = 0; r < g_memRuns; r++) {
+        if (start[r + 1] == start[r]) continue;
+        fUniform1i(uCutout, g_memRunCut[r]);
+        if (g_memRunCut[r]) glBindTexture(GL_TEXTURE_2D, g_memRunTex[r]);
+        glDrawArrays(GL_TRIANGLES, start[r] * 3, (start[r + 1] - start[r]) * 3);
+    }
+}
+
+unsigned u9shadow_sun_rebases(void)
+{
+    return g_sunRebases;
+}
+
+void u9shadow_sun_forget(void)
+{
+    mem_clear();
+    g_memHaveCam = 0;
+}
+
+static int draw_sun_map(const U9FrameView *v, int i, const float r[3], const float u[3], const float l[3],
+                        const float pr[3], const float pu[3], const float pl[3], const float o[3], float half,
+                        U9SunMap *m)
+{
+    float texel, ahead[3], a, b, z;
+    DrawCtx ctx;
+    int k;
+    memcpy(m->r, r, sizeof m->r);
+    memcpy(m->u, u, sizeof m->u);
+    memcpy(m->l, l, sizeof m->l);
+    memcpy(m->pr, pr, sizeof m->pr);
+    memcpy(m->pu, pu, sizeof m->pu);
+    memcpy(m->pl, pl, sizeof m->pl);
+    m->half = half;
+    m->dz = half * 3.0f > 16384.0f ? half * 3.0f : 16384.0f;
+    m->size = g_sunSize;
+    texel = 2.0f * m->half / (float)m->size;
+    ahead[0] = v->m[3] + v->m[1] * half * g_sunAhead;
+    ahead[1] = v->m[7] + v->m[5] * half * g_sunAhead;
+    ahead[2] = v->m[11];
+    for (k = 0; k < 3; k++) ahead[k] -= o[k];
+    a = (float)floor((double)((ahead[0] * pr[0] + ahead[1] * pr[1] + ahead[2] * pr[2]) / texel) + 0.5) * texel;
+    b = (float)floor((double)((ahead[0] * pu[0] + ahead[1] * pu[1] + ahead[2] * pu[2]) / texel) + 0.5) * texel;
+    z = ahead[0] * pl[0] + ahead[1] * pl[1] + ahead[2] * pl[2];
+    for (k = 0; k < 3; k++) m->c[k] = o[k] + r[k] * a + u[k] * b + l[k] * z;
+    m->texel = texel;
+    if (!make_sun(i)) return 0;
+    fBindFramebuffer(GL_FRAMEBUFFER, g_sunFbo[i]);
+    glViewport(0, 0, g_sunTexSize[i], g_sunTexSize[i]);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearDepth(1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    begin_casters(v);
+    fUniform1i(uMode, 2);
+    fUniform3f(uFs, pr[0], pr[1], pr[2]);
+    fUniform3f(uFt, pu[0], pu[1], pu[2]);
+    fUniform3f(uFm, pl[0], pl[1], pl[2]);
+    fUniform3f(uLight, m->c[0], m->c[1], m->c[2]);
+    fUniform2f(uNf, m->half, m->dz);
+    memset(&ctx, 0, sizeof ctx);
+    ctx.v = v;
+    ctx.sunMap = g_sunCull;
+    memcpy(ctx.sc, m->c, sizeof ctx.sc);
+    memcpy(ctx.spr, pr, sizeof ctx.spr);
+    memcpy(ctx.spu, pu, sizeof ctx.spu);
+    ctx.shalf = m->half;
+    ctx.cam[0] = v->m[3];
+    ctx.cam[1] = v->m[7];
+    if (g_sunFadeTo > g_sunFadeFrom) {
+        float r = g_sunFadeTo + SUN_MEM_SHADOW_REACH;
+        ctx.castReach2 = r * r;
+    }
+    if (g_sunMemory != 2) u9gl_casters(draw_run, &ctx);
+    g_sunRunsDrawn[i & 1] = ctx.drawn;
+    g_sunRunsCulled[i & 1] = ctx.culled;
+    if (g_sunMemory) mem_render();
+    end_casters();
+    fBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (i == 0) g_sunTris = ctx.tris;
+    m->tex = g_sunTex[i];
+    return 1;
+}
+
+static void sun_axes(const float l0[3], const float l[3], float r[3], float u[3], float pr[3], float pu[3], float pl[3])
+{
+    static const float worldY[3] = { 0.0f, 1.0f, 0.0f };
+    float back[3], ll, rl, ul;
+    int k;
+    for (k = 0; k < 3; k++) back[k] = -l0[k];
+    cross3(back, worldY, r);
+    unit3(r);
+    cross3(r, back, u);
+    ll = l0[0] * l[0] + l0[1] * l[1] + l0[2] * l[2];
+    rl = r[0] * l[0] + r[1] * l[1] + r[2] * l[2];
+    ul = u[0] * l[0] + u[1] * l[1] + u[2] * l[2];
+    for (k = 0; k < 3; k++) {
+        pr[k] = r[k] - rl / ll * l0[k];
+        pu[k] = u[k] - ul / ll * l0[k];
+        pl[k] = l0[k] / ll;
+    }
+}
+
+static float sun_step(float l[3], float old[3])
+{
+    DWORD now = u9time_now(), age;
+    float x, step = (float)g_sunStepMs, fade = (float)g_sunXfadeMs;
+    if (g_sunStepMs <= 0 || g_sunHold) {
+        g_xHave = g_xFading = 0;
+        return 1.0f;
+    }
+    if (fade > step) fade = step;
+    age = now - g_xAt;
+    if (!g_xHave || l[0] * g_xNew[0] + l[1] * g_xNew[1] + l[2] * g_xNew[2] < cosf(SUN_XFADE_SNAP * 0.017453292f)) {
+        memcpy(g_xNew, l, sizeof g_xNew);
+        g_xAt = now;
+        g_xHave = 1;
+        g_xFading = 0;
+    } else if ((float)age >= step) {
+        memcpy(g_xOld, g_xNew, sizeof g_xOld);
+        memcpy(g_xNew, l, sizeof g_xNew);
+        g_xAt = now;
+        g_xFading = fade > 0.0f;
+        g_xSteps++;
+    }
+    memcpy(l, g_xNew, sizeof g_xNew);
+    if (!g_xFading) return 1.0f;
+    x = (float)(DWORD)(now - g_xAt) / fade;
+    if (x >= 1.0f) { g_xFading = 0; return 1.0f; }
+    memcpy(old, g_xOld, sizeof g_xOld);
+    return x;
+}
+
+int u9shadow_sun_fading(U9SunMap *nearOld, U9SunMap *farOld, float *mix)
+{
+    if (!g_oldMaps) return 0;
+    *nearOld = g_oldNear;
+    *farOld = g_oldFar;
+    *mix = g_xMix;
+    return g_oldMaps;
+}
+
+unsigned u9shadow_sun_steps(void)
+{
+    return g_xSteps;
+}
+
+int u9shadow_build_sun(const U9FrameView *v, const float dir[3], U9SunMap *nearMap, U9SunMap *farMap)
+{
+    float r[3], u[3], l[3], l0[3], pr[3], pu[3], pl[3], cam[3], o[3], lOld[3], reach;
+    int k, maps;
+    g_oldMaps = 0;
+    g_xMix = 1.0f;
+    if (g_failed || !v || !v->valid) return 0;
+    if (!load()) return 0;
+    if (g_traceLeft > 0) trace_frame();
+    if (g_sunCull && g_boxFrame != u9log_frame()) {
+        DrawCtx bc;
+        g_nBox = 0;
+        memset(&bc, 0, sizeof bc);
+        bc.v = v;
+        u9gl_casters(box_run, &bc);
+        g_boxFrame = u9log_frame();
+    }
+    if (g_sunFreeze && g_frozenMaps) {
+        *nearMap = g_frozenNear;
+        *farMap = g_frozenFar;
+        return g_frozenMaps;
+    }
+    if (g_sunSize < 256) g_sunSize = 256;
+    if (g_sunSize > 4096) g_sunSize = 4096;
+    if (g_sunRange < 500.0f) g_sunRange = 500.0f;
+    if (g_sunNear < 250.0f) g_sunNear = 250.0f;
+    maps = g_sunCascades && g_sunNear < g_sunRange * 0.75f ? 2 : 1;
+    reach = g_sunRange;
+    for (k = 0; k < 3; k++) l[k] = dir[k];
+    unit3(l);
+    if (g_sunHold) {
+        if (!g_sunHaveHeld) { memcpy(g_sunHeld, l, sizeof g_sunHeld); g_sunHaveHeld = 1; }
+        memcpy(l, g_sunHeld, sizeof l);
+    } else {
+        g_sunHaveHeld = 0;
+    }
+    g_xMix = sun_step(l, lOld);
+    cam[0] = v->m[3]; cam[1] = v->m[7]; cam[2] = v->m[11];
+    if (g_sunSteady) {
+        float away = g_sunHaveRef ? (cam[0] - g_sunPivot[0]) * g_sunRef[0] + (cam[1] - g_sunPivot[1]) * g_sunRef[1]
+                                    + (cam[2] - g_sunPivot[2]) * g_sunRef[2] : 0.0f;
+        if (!g_sunHaveRef || l[0] * g_sunRef[0] + l[1] * g_sunRef[1] + l[2] * g_sunRef[2]
+                             < cosf(SUN_STEADY_DEG * 0.017453292f) || away > SUN_STEADY_AWAY || away < -SUN_STEADY_AWAY) {
+            memcpy(g_sunRef, l, sizeof g_sunRef);
+            memcpy(g_sunPivot, cam, sizeof g_sunPivot);
+            g_sunHaveRef = 1;
+            g_sunRebases++;
+        }
+        memcpy(l0, g_sunRef, sizeof l0);
+        memcpy(o, g_sunPivot, sizeof o);
+    } else {
+        memcpy(l0, l, sizeof l0);
+        o[0] = o[1] = o[2] = 0.0f;
+        g_sunHaveRef = 0;
+    }
+    sun_axes(l0, l, r, u, pr, pu, pl);
+    cam[0] = v->m[3]; cam[1] = v->m[7]; cam[2] = v->m[11];
+
+    if (!g_sunMemory) g_memListN = g_memRuns = 0;
+    g_memPassNow = 0;
+    if (g_sunMemory) {
+        if (!g_mem) {
+            g_mem = (SunTri *)malloc(SUN_MEM_MAX * sizeof *g_mem);
+            g_memHash = (int *)calloc(SUN_MEM_HASH, sizeof *g_memHash);
+            if (!g_mem || !g_memHash) { free(g_mem); free(g_memHash); g_mem = NULL; g_memHash = NULL; g_sunMemory = 0; }
+        }
+        if (g_mem) {
+            MemCtx mc;
+            float dx = cam[0] - g_memCam[0], dy = cam[1] - g_memCam[1], dz = cam[2] - g_memCam[2];
+            float jump = maps == 2 ? g_sunNear * 2.0f : reach;
+            int fresh = 0;
+            if (g_memHaveCam && dx * dx + dy * dy + dz * dz > jump * jump) { mem_clear(); fresh = 1; }
+            for (k = 0; k < 3; k++) g_memCam[k] = cam[k];
+            g_memHaveCam = 1;
+            if (!fresh && g_memListN && (++g_memTick % SUN_MEM_EVERY) != 0) goto memory_done;
+            g_memFrame++;
+            g_memPassNow = 1;
+            mc.v = v;
+            mc.camX = cam[0];
+            mc.camY = cam[1];
+            mc.camZ = cam[2];
+            mc.reach2 = mem_reach(reach) * mem_reach(reach);
+            mc.now = u9time_now();
+            u9gl_casters(mem_collect, &mc);
+            mem_update(v, reach);
+            if (mc.now - g_memLogAt >= 2000u) {
+                float fz = v->m[9];
+                if (fz > 1.0f) fz = 1.0f;
+                if (fz < -1.0f) fz = -1.0f;
+                u9log_line("SUNMEM held %u, drawn %u this frame, %u new and %u forgotten in %u ms, %u slivers skipped;"
+                           " camera z %.0f, pitch %.0f deg%s",
+                           g_sunMemLive, g_sunMemDrawn, g_sunMemNew - g_memLogNew, g_sunMemDropped - g_memLogDropped,
+                           (unsigned)(mc.now - g_memLogAt), g_sunMemSkipped, (double)cam[2],
+                           (double)(asinf(fz) * 57.29578f), g_sunMemory == 2 ? ", memory only" : "");
+                g_memLogAt = mc.now;
+                g_memLogNew = g_sunMemNew;
+                g_memLogDropped = g_sunMemDropped;
+                g_sunMemSkipped = 0;
+            }
+        }
+    }
+memory_done:
+    if (g_sunMemory) mem_between(v, g_memPassNow);
+
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    if (!draw_sun_map(v, 0, r, u, l, pr, pu, pl, o, maps == 2 ? g_sunNear : reach, nearMap)) { glPopAttrib(); return 0; }
+    if (maps == 2 && !draw_sun_map(v, 1, r, u, l, pr, pu, pl, o, reach, farMap)) maps = 1;
+    if (g_xMix < 1.0f) {
+        float ro[3], uo[3], pro[3], puo[3], plo[3];
+        if (!g_sunSteady) memcpy(l0, lOld, sizeof l0);
+        sun_axes(l0, lOld, ro, uo, pro, puo, plo);
+        if (draw_sun_map(v, 2, ro, uo, lOld, pro, puo, plo, o, maps == 2 ? g_sunNear : reach, &g_oldNear)) {
+            g_oldMaps = 1;
+            if (maps == 2 && draw_sun_map(v, 3, ro, uo, lOld, pro, puo, plo, o, reach, &g_oldFar)) g_oldMaps = 2;
+        }
+    }
+    glPopAttrib();
+    g_sunBuilds++;
+    g_frozenNear = *nearMap;
+    if (maps == 2) g_frozenFar = *farMap;
+    g_frozenMaps = maps;
+    return maps;
+}
+
+void u9shadow_draw_sun_view(int surfW, int surfH)
+{
+    int side, i = g_sunView == 2 ? 1 : 0;
+    if (!g_sunView || !g_sunTex[i] || g_failed) return;
+    side = (surfW < surfH ? surfW : surfH) * 45 / 100;
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    glViewport(8, surfH - side - 8, side, side);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_FOG);
+    glDisable(GL_CULL_FACE);
+    fActiveTexture(GL_TEXTURE0);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, g_sunTex[i]);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity();
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f, -1.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f, -1.0f);
+    glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f,  1.0f);
+    glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f,  1.0f);
+    glEnd();
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION); glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopAttrib();
+}
+
+void u9shadow_draw_view(const U9FrameView *v, int surfW, int surfH)
+{
+    DrawCtx ctx;
+    int side;
+    if (!g_shadowView || g_failed || !v || !v->valid) return;
+    if (!load()) return;
+    side = (surfW < surfH ? surfW : surfH) * 45 / 100;
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    glViewport(surfW - side - 8, surfH - side - 8, side, side);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(surfW - side - 8, surfH - side - 8, side, side);
+    glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
+    glClearDepth(1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    begin_casters(v);
+    glEnable(GL_SCISSOR_TEST);
+    fUniform1i(uMode, 1);
+    fUniform4f(uTop, v->m[3], v->m[7], 1024.0f, v->m[11]);
+    memset(&ctx, 0, sizeof ctx);
+    u9gl_casters(draw_run, &ctx);
+    end_casters();
+    {
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_TEXTURE_2D);
+        glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+        glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity();
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glBegin(GL_LINES);
+        glVertex2f(-0.03f, 0.0f); glVertex2f(0.03f, 0.0f);
+        glVertex2f(0.0f, -0.03f); glVertex2f(0.0f, 0.03f);
+        glEnd();
+        glPopMatrix();
+        glMatrixMode(GL_PROJECTION); glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+    }
+    glPopAttrib();
+}
+
+void u9shadow_init(void)
+{
+    g_shadowOn      = u9cfg_int("gl_light_shadows", 1);
+    g_shadowSize    = u9cfg_int("gl_light_shadow_size", 512);
+    g_shadowCutouts = u9cfg_int("gl_light_shadow_cutouts", 1);
+    g_shadowHideBlob = u9cfg_int("gl_light_shadow_hide_blob", 1);
+    g_shadowCount   = u9cfg_int("gl_light_shadow_count", 8);
+    if (g_shadowCount < 1) g_shadowCount = 1;
+    if (g_shadowCount > U9SHADOW_MAX) g_shadowCount = U9SHADOW_MAX;
+    g_sunOn           = u9cfg_int("gl_sun_shadows", 1);
+    g_sunStrength     = (float)u9cfg_int("gl_sun_shadow_strength", 60) / 100.0f;
+    g_sunRange        = (float)u9cfg_int("gl_sun_shadow_range", 10000);
+    g_sunNear         = (float)u9cfg_int("gl_sun_shadow_near", 1000);
+    g_sunCascades     = u9cfg_int("gl_sun_shadow_cascades", 1);
+    g_sunSize         = u9cfg_int("gl_sun_shadow_size", 2048);
+    g_sunMinElevation = (float)u9cfg_int("gl_sun_shadow_min", 5);
+    g_sunFadeFrom     = (float)u9cfg_int("gl_sun_shadow_fade_from", 2500);
+    g_sunFadeTo       = (float)u9cfg_int("gl_sun_shadow_fade_to", 4000);
+    g_sunBias         = (float)u9cfg_int("gl_sun_shadow_bias", 0);
+    g_sunWalls        = u9cfg_int("gl_sun_shadow_walls", 1);
+    g_sunCull         = u9cfg_int("gl_sun_shadow_cull", 1);
+    g_sunStepMs       = u9cfg_int("gl_sun_shadow_step", 2000);
+    g_sunXfadeMs      = u9cfg_int("gl_sun_shadow_xfade", 1000);
+    if (g_sunStepMs < 0) g_sunStepMs = 0;
+    if (g_sunXfadeMs < 0) g_sunXfadeMs = 0;
+    g_waterDepth      = u9cfg_int("gl_water_depth", 1);
+    g_sunAbove        = (float)u9cfg_int("gl_sun_shadow_above", -5000);
+    if (g_sunBias < 0.0f) g_sunBias = 0.0f;
+    g_sunMemory       = u9cfg_int("gl_sun_shadow_memory", 1);
+    g_sunKeepS        = u9cfg_int("gl_sun_shadow_keep", 120);
+}
+
+int u9shadow_hide_blob(void)
+{
+    return g_shadowOn && g_shadowHideBlob && !g_failed;
+}

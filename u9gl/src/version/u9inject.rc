@@ -1,0 +1,5 @@
+#define U9GL_FILE_DESC     "U9GL development injector"
+#define U9GL_INTERNAL_NAME "u9inject"
+#define U9GL_ORIGINAL_NAME "u9inject.exe"
+#define U9GL_FILE_TYPE     VFT_APP
+#include "version_common.rc"

@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="U9GL.Core.Tests/U9GL.Core.Tests.csproj" />
+  <Project Path="U9GL.Core/U9GL.Core.csproj" />
+  <Project Path="U9GL.Launcher/U9GL.Launcher.csproj" />
+  <Project Path="U9GL.WebDashboard/U9GL.WebDashboard.csproj" />
+  <Project Path="U9GL.WebDashboard.Tests/U9GL.WebDashboard.Tests.csproj" />
+</Solution>

@@ -1,0 +1,65 @@
+<UserControl x:Class="U9GL.Launcher.Views.ExperimentalPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Experimental" Style="{StaticResource PageTitleStyle}" />
+        <Border Style="{StaticResource CardStyle}" Margin="0,8,0,20">
+            <TextBlock Style="{StaticResource WarningTextStyle}"
+                       Text="These values have not been tried with U9GL yet. One may look wrong, run slowly or crash the game. The verified values are on the other pages. If you try one, please tell the U9GL project how it went, so it can be marked as working or broken." />
+        </Border>
+
+        <ItemsControl ItemsSource="{Binding Settings}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*, 300">
+                                <StackPanel Margin="0,0,16,0">
+                                    <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock Text="{Binding Help}" Style="{StaticResource SecondaryTextStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" VerticalAlignment="Center"
+                                          ItemsSource="{Binding Choices}"
+                                          SelectedItem="{Binding Selected}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock>
+                                                <Run Text="{Binding Label, Mode=OneWay}" />
+                                                <Run Text="  " />
+                                                <Run Text="{Binding StatusText, Mode=OneWay}"
+                                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+
+                            <StackPanel Margin="0,12,0,0" Orientation="Horizontal"
+                                        Visibility="{Binding AllowsCustom, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="Or a custom value:" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <ItemsControl ItemsSource="{Binding CustomValues}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Width="90" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="Use these" Command="{Binding ApplyCustomCommand}" Padding="14,4" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding CustomError}" Style="{StaticResource ErrorTextStyle}" Margin="0,6,0,0"
+                                       Visibility="{Binding CustomError, Converter={StaticResource TextToVisibility}}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

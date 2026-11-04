@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <U9glVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\VERSION').Trim())</U9glVersion>
+    <Version>$(U9glVersion)</Version>
+    <AssemblyVersion>$(U9glVersion).0</AssemblyVersion>
+    <FileVersion>$(U9glVersion).0</FileVersion>
+    <Company>tgwUltimaGL</Company>
+    <Product>U9GL</Product>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
+  </PropertyGroup>
+</Project>

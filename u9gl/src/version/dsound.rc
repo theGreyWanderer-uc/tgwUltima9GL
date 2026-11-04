@@ -1,0 +1,5 @@
+#define U9GL_FILE_DESC     "U9GL loader (DirectSound proxy)"
+#define U9GL_INTERNAL_NAME "dsound"
+#define U9GL_ORIGINAL_NAME "dsound.dll"
+#define U9GL_FILE_TYPE     VFT_DLL
+#include "version_common.rc"

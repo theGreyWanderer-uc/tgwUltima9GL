@@ -1,0 +1,142 @@
+# Builds and tests U9GL on every push and pull request, and packages both release zips.
+# A pushed tag v<VERSION> also creates a draft release with the zips and SHA256SUMS;
+# it is published by hand on GitHub.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: write   # only used by the release step, which runs for tags alone
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: MinGW i686 toolchain
+        id: msys2
+        uses: msys2/setup-msys2@v2.33.0
+        with:
+          msystem: MINGW32
+          # Current MSYS2 packages, not the runner image's snapshot: the same toolchain a
+          # developer's up-to-date MSYS2 has. The versions are logged in the next steps.
+          update: true
+          install: mingw-w64-i686-gcc
+          # The game is 32-bit, so its DLLs are too: MSYS2's 32-bit environment is the
+          # toolchain, deprecated or not.
+          suppress-deprecation-warnings: msystem-mingw32
+
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          # An exact SDK, so the runtime the full zip bundles is chosen here, not by the runner.
+          dotnet-version: '10.0.403'
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Version
+        run: |
+          ver="$(tr -d ' \r\n' < VERSION)"
+          echo "VER=$ver" >> "$GITHUB_ENV"
+          echo "GCC=$(cygpath -m '${{ steps.msys2.outputs.msys2-location }}')/mingw32/bin/gcc.exe" >> "$GITHUB_ENV"
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$ver" ]]; then
+            echo "tag $GITHUB_REF_NAME does not match VERSION $ver" >&2
+            exit 1
+          fi
+
+      - name: Toolchain versions
+        shell: msys2 {0}
+        run: |
+          pacman -Q mingw-w64-i686-gcc mingw-w64-i686-binutils mingw-w64-i686-crt \
+                    mingw-w64-i686-headers mingw-w64-i686-winpthreads
+
+      - name: Native build
+        run: |
+          "$GCC" --version | head -1
+          dotnet --version
+          cd u9gl && ./build.sh -j 4 "$GCC"
+
+      - name: Native tests
+        run: |
+          bash tests/abi/run.sh "$GCC"
+          bash tests/telemetry/run.sh "$GCC"
+          bash tests/telemetry/build-tools.sh "$GCC"
+
+      - name: Launcher build and tests
+        run: |
+          dotnet build launcher/U9GL.slnx -c Release
+          dotnet test launcher/U9GL.slnx -c Release --no-build
+
+      - name: Package
+        run: |
+          env -u PSModulePath powershell -NoProfile -ExecutionPolicy Bypass -File tools/package.ps1
+          env -u PSModulePath powershell -NoProfile -ExecutionPolicy Bypass -File tools/package.ps1 -NoRuntime
+          mkdir -p release
+          cp "dist/u9gl-$VER/u9gl.zip" "release/u9gl-$VER.zip"
+          cp "dist/u9gl-$VER/u9gl-noruntime.zip" "release/u9gl-$VER-noruntime.zip"
+          (cd release && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
+
+      # One artifact per zip, so each is its own download on the run's page.
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: u9gl-${{ env.VER }}
+          path: |
+            release/u9gl-${{ env.VER }}.zip
+            release/SHA256SUMS
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: u9gl-${{ env.VER }}-noruntime
+          path: |
+            release/u9gl-${{ env.VER }}-noruntime.zip
+            release/SHA256SUMS
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: u9gl-${{ env.VER }}-symbols
+          path: dist/u9gl-${{ env.VER }}/symbols/
+          if-no-files-found: error
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk -v ver="$VER" '
+            index($0, "## " ver " (") == 1 { on = 1; next }
+            /^## / { on = 0 }
+            on' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no '## $VER (<date>)' section" >&2
+            exit 1
+          fi
+          {
+            echo
+            echo "---"
+            echo
+            echo "Two downloads: \`u9gl-$VER.zip\` brings its own .NET; \`u9gl-$VER-noruntime.zip\` is the same without it, for a PC with the .NET 10 Desktop and ASP.NET Core runtimes installed. Unzip either into the game folder, so that \`u9gl\\\` sits beside \`u9.exe\`, then run \`u9gl\\U9GL.exe\`. No game files are included."
+          } >> notes.md
+          gh release create "$GITHUB_REF_NAME" release/* --draft --title "U9GL $VER" --notes-file notes.md

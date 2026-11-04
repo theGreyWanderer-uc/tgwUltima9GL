@@ -1,0 +1,5 @@
+#define U9GL_FILE_DESC     "U9GL renderer, fixes and diagnostics for Ultima IX"
+#define U9GL_INTERNAL_NAME "u9log"
+#define U9GL_ORIGINAL_NAME "u9log.dll"
+#define U9GL_FILE_TYPE     VFT_DLL
+#include "version_common.rc"

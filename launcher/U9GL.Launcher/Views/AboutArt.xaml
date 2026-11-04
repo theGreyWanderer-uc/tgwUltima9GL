@@ -1,0 +1,17 @@
+<UserControl x:Class="U9GL.Launcher.Views.AboutArt"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fx="clr-namespace:U9GL.Launcher.Effects"
+             IsVisibleChanged="OnIsVisibleChanged" Loaded="OnLoaded" Unloaded="OnUnloaded">
+    <Grid>
+        <Image x:Name="Still" Source="pack://application:,,,/Resources/About.png"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+        <MediaElement x:Name="Video" LoadedBehavior="Manual" UnloadedBehavior="Close"
+                      IsMuted="True" Stretch="Uniform" Visibility="Hidden"
+                      MediaOpened="OnMediaOpened" MediaEnded="OnMediaEnded" MediaFailed="OnMediaFailed">
+            <MediaElement.Effect>
+                <fx:OnWhiteToAlpha />
+            </MediaElement.Effect>
+        </MediaElement>
+    </Grid>
+</UserControl>

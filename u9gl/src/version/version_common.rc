@@ -1,0 +1,30 @@
+#include <winver.h>
+#include "u9gl_version.h"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     U9GL_VER_MAJOR, U9GL_VER_MINOR, U9GL_VER_PATCH, 0
+PRODUCTVERSION  U9GL_VER_MAJOR, U9GL_VER_MINOR, U9GL_VER_PATCH, 0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        U9GL_FILE_TYPE
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "tgwUltimaGL"
+            VALUE "FileDescription",  U9GL_FILE_DESC
+            VALUE "FileVersion",      U9GL_VERSION
+            VALUE "InternalName",     U9GL_INTERNAL_NAME
+            VALUE "OriginalFilename", U9GL_ORIGINAL_NAME
+            VALUE "ProductName",      "U9GL"
+            VALUE "ProductVersion",   U9GL_VERSION_FULL
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
