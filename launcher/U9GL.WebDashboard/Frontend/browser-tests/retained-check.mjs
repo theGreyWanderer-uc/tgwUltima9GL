@@ -37,7 +37,7 @@ try {
     .toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   assert.equal(await privateReading.locator("strong").textContent(), displayedPrivate);
   assert.equal(await privateReading.getAttribute("data-quality"), "stale");
-  await page.getByRole("navigation", { name: "Dashboard navigation" }).getByRole("link", { name: "History 06" }).click();
+  await page.getByRole("navigation", { name: "Dashboard navigation" }).getByRole("link", { name: "History 07" }).click();
   await page.locator(".lcars-time-trend summary").first().click();
   assert.notEqual(await page.locator(".lcars-time-trend details").first().getAttribute("open"), null);
   assert(await page.getByRole("table", { name: "Private memory (MiB) · supplied values" }).locator("tbody tr").count() > 0);

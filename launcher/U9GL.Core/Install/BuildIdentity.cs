@@ -17,6 +17,7 @@ public static class BuildIdentity
     public static IReadOnlyList<KnownBuild> Known { get; } =
     [
         new("1.19F", "83915175abaf8a65dab96fc42f1feed24a78f55dc8b28a736b61ffa83314b545", 4_593_152, "GOG"),
+        new("1.19F", "339a5ba8683546363ab8b95c53d3e980dfbd959afe8719b11f2666c4dbd0e152", 4_603_776, "Steam"),
     ];
 
     public static GameBuild Identify(string exePath, IReadOnlyList<KnownBuild>? known = null)

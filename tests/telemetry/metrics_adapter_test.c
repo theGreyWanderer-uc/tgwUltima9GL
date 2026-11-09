@@ -69,6 +69,37 @@ int main(void)
         sample.directory[4].flags != U9TM_GROUP_AVAILABLE) return 8;
 
     {
+        U9PlayerStats p;
+        memset(&p, 0, sizeof p);
+        p.recordValid = 1; p.strength = 1; p.dexterity = -1; p.intelligence = 3;
+        p.health = 85; p.healthMax = 120; p.healthBase = 110; p.mana = 40; p.manaMax = 60; p.manaBase = 50;
+        p.breath = 7; p.breathMax = 30; p.breathBase = 30; p.armour = 12; p.armourBonus = 3; p.magicResistBonus = 5;
+        p.stateFlags = 0x80000002u; p.weapon = 4; p.skill[0] = 3; p.skill[4] = 2;
+        p.spellsLo = UINT64_C(0x8000000000000001); p.spellsHi = 0x2000;
+        p.datumsValid = 1; p.classChosen = 1; p.classId = 5; p.shrines = 0x81;
+        in.world_qpc = 98; in.map = 9; in.player = &p;
+        u9telemetry_metrics_copy(&in, &sample);
+        if (sample.directory[17].flags != U9TM_GROUP_AVAILABLE || sample.directory[17].id != U9TM_GROUP_PLAYER ||
+            sample.player.collected_qpc != 98 || sample.player.record_valid != 1 || sample.player.strength != 1 ||
+            sample.player.dexterity != -1 || sample.player.intelligence != 3 || sample.player.health != 85 ||
+            sample.player.health_max != 120 || sample.player.health_base != 110 || sample.player.mana_base != 50 ||
+            sample.player.breath != 7 || sample.player.armour_bonus != 3 || sample.player.magic_resist_bonus != 5 ||
+            sample.player.state_flags != 0x80000002u || sample.player.weapon != 4 || sample.player.skill_fists != 3 ||
+            sample.player.skill_ranged != 2 || sample.player.skill_staff != 0 ||
+            sample.player.spells_lo != UINT64_C(0x8000000000000001) || sample.player.spells_hi != 0x2000 ||
+            sample.player.datums_valid != 1 || sample.player.class_chosen != 1 || sample.player.class_id != 5 ||
+            sample.player.shrines != 0x81) return 20;
+        p.recordValid = 0;
+        u9telemetry_metrics_copy(&in, &sample);
+        if (sample.directory[17].flags != U9TM_GROUP_AVAILABLE || sample.player.record_valid || sample.player.health ||
+            sample.player.weapon != -1 || sample.player.class_id != 5) return 21;
+        in.map = -1;
+        u9telemetry_metrics_copy(&in, &sample);
+        if (sample.directory[17].flags || !all_zero(&sample.player, sizeof sample.player)) return 22;
+        in.player = NULL; in.world_qpc = 0;
+    }
+
+    {
         U9MetricsHeavy h = {0};
         U9ObjStats area = {0};
         area.valid = 1; area.objects = 312; area.worstCell = 41; area.topType[2] = 777; area.topCount[2] = 9;

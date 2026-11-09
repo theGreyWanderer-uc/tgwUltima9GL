@@ -7,13 +7,16 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using U9GL.Core.Data;
 using U9GL.WebDashboard.Telemetry;
 
 namespace U9GL.WebDashboard;
 
 public sealed class WebDashboardHost(int port = WebDashboardHost.DefaultPort,
-    Func<IDashboardTelemetrySource>? sourceFactory = null, GameLogFollower? log = null) : IAsyncDisposable
+    Func<IDashboardTelemetrySource>? sourceFactory = null, GameLogFollower? log = null,
+    string? gameRoot = null) : IAsyncDisposable
 {
+    private readonly Lazy<TypeNames?> _typeNames = new(() => gameRoot == null ? null : TypeNames.Load(gameRoot));
     public const int DefaultPort = 9999;
     public static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(3);
     private WebApplication? _application;
@@ -81,6 +84,16 @@ public sealed class WebDashboardHost(int port = WebDashboardHost.DefaultPort,
             var hub = new DashboardTelemetryHub(Telemetry);
             Telemetry.LogSummary = Log.Summary;
             application.MapDashboardTelemetry(Telemetry, hub, workerStop.Token, Log);
+            application.MapGet("/api/v1/typenames", (HttpContext context) =>
+            {
+                var names = _typeNames.Value;
+                var result = new Dictionary<string, string>();
+                if (names != null)
+                    foreach (string part in context.Request.Query["ids"].ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Take(64))
+                        if (int.TryParse(part, out int id) && names[id] is { } name) result[id.ToString()] = name;
+                context.Response.Headers.CacheControl = "max-age=3600";
+                return Results.Json(result);
+            });
 
             await application.StartAsync(cancellationToken).ConfigureAwait(false);
             var server = application.Services.GetRequiredService<IServer>();

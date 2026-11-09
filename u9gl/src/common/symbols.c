@@ -41,6 +41,12 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x004F6250u, "Actor_Create: CALL operator new, base actor" },
     [U9SYM_ACTOR_NEW_CALL_DERIVED] =
         { 0x004F6842u, "Actor_Create: CALL operator new, derived actor" },
+    [U9SYM_ACTOR_CREATE_CALL_SCHEDULED] =
+        { 0x004F2C69u, "Actor_Register_Scheduled: CALL Actor_Create (E8 52 31 00 00), thiscall (actor table, npc index), RET 4" },
+    [U9SYM_ACTOR_CREATE_CALL_LOAD] =
+        { 0x004F5BCBu, "Actor_LoadFromSave: CALL Actor_Create (E8 F0 01 00 00)" },
+    [U9SYM_ACTOR_CREATE_CALL_PACKED] =
+        { 0x004F364Cu, "Actor_Create_FromPackedIndex: CALL Actor_Create (E8 6F 27 00 00), then RET" },
     [U9SYM_ACTOR_CTOR_CALL_BASE] =
         { 0x004F626Fu, "Actor_Create: CALL the base actor constructor" },
     [U9SYM_ACTOR_CTOR_CALL_DERIVED] =
@@ -124,6 +130,10 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x004AD5C1u, "Gold_PickUpPile: MOV EDI,0x270F, the pickup's own copy of the cap" },
     [U9SYM_GOLDWIDGET_REDRAW_SLOT] =
         { 0x00753698u, "vtable 0x00753640 slot 22 (+0x58): GoldWidget_NeedsRedraw 0x005CC680" },
+    [U9SYM_ARROWS_TOTAL] =
+        { 0x004AD710u, "Arrows_Total: no arguments, plain RET; property 0x11 of the Avatar's slot-5 (quiver) item, or 0 - called" },
+    [U9SYM_ACTOR_ADD_POISON] =
+        { 0x004F9850u, "Actor_AddPoison: thiscall on the actor table [0x0098F324], (actor, hits), RET 8; record +0x48 |= 0x2, actor +0x70 += hits (capped by health), +0x74 = 8000 - called" },
     [U9SYM_GOLD_TOTAL] =
         { 0x004AD2F0u, "Gold_Total: no arguments, plain RET; the Avatar's gold - called" },
     [U9SYM_ITEM_CREATE] =
@@ -527,6 +537,88 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x004C0680u, "Item_TakeOutToWorld: thiscall (item, 1, location x, y, z by value, 1), RET 0x14 -> the item's object (it may move); as special action 12 calls it - called" },
     [U9SYM_WORLDOBJ_PLACE_AT] =
         { 0x004C3C10u, "WorldObj_PlaceAt: thiscall (&handle, &location {i32 x, i32 y, i16 z}, 0), RET 8; keeps the facing (0x004BECE0) and calls WorldObj_MoveTo - as stage 13 of a cleansing calls it - called" },
+    [U9SYM_SKILL_RAISE_UNARMED] =
+        { 0x0061E0C0u, "AvatarSkill_RaiseUnarmed entry, MOV EAX,[0x0098F31C] (A1 1C F3 98 00): thiscall (conversation), RET; record 0 +0x124 += 1 below 3" },
+    [U9SYM_SKILL_RAISE_1H] =
+        { 0x0061E0E0u, "AvatarSkill_Raise1H entry, MOV EAX,[0x0098F31C]: thiscall (conversation), RET; +0x128" },
+    [U9SYM_SKILL_RAISE_2H] =
+        { 0x0061E100u, "AvatarSkill_Raise2H entry, MOV EAX,[0x0098F31C]: thiscall (conversation), RET; +0x12C" },
+    [U9SYM_SKILL_RAISE_BLUNT] =
+        { 0x0061E120u, "AvatarSkill_RaiseBlunt entry, MOV EAX,[0x0098F31C]: thiscall (conversation), RET; +0x130 (staff)" },
+    [U9SYM_SKILL_RAISE_RANGED] =
+        { 0x0061E140u, "AvatarSkill_RaiseRanged entry, MOV EAX,[0x0098F31C]: thiscall (conversation), RET; +0x134" },
+    [U9SYM_NPCREC_LEARN_SPELL] =
+        { 0x004F3740u, "NpcRec_LearnSpell entry, PUSH ESI / PUSH EDI / MOV EDI,ECX / MOV ECX,[ESP+0xC] (56 57 8B F9 8B 4C 24 0C): thiscall (record, spell), RET 4; sets spellbook bit n" },
+    [U9SYM_AVATAR_BREATH_SLOT] =
+        { 0x00741F74u, "vtable 0x00741CA8 (AvatarCombat) slot +0x2CC -> 0x00418B80 AvatarActor_UpdateBreath: thiscall (actor), RET" },
+    [U9SYM_BREATH_DEEP_REMAINDER] =
+        { 0x00418F54u, "AvatarActor_UpdateBreath deep branch, MOV EAX,[ESI+0x680] (8B 86 80 06 00 00): the start of the overshoot mod 300 store (I-20)" },
+    [U9SYM_BREATH_DEEP_RESUME] =
+        { 0x00418F7Du, "AvatarActor_UpdateBreath, CMP WORD PTR [EDI],0 (66 83 3F 00): where the deep branch's JMP at 0x00418F68 goes - resumed into" },
+    [U9SYM_BREATH_SWITCH_ON_CALL] =
+        { 0x0054FED6u, "U9Trigger_Execute opcode 0x60, record bit set: CALL [EDX+0x1E8] (FF 92 E8 01 00 00) on the Avatar actor's +0x14 object, PUSH 0 - breath tracking on" },
+    [U9SYM_BREATH_SWITCH_OFF_CALL] =
+        { 0x0054FEE5u, "U9Trigger_Execute opcode 0x60, record bit clear: CALL [EAX+0x1E8] (FF 90 E8 01 00 00), PUSH 1 - breath tracking off" },
+    [U9SYM_FACE_TWO_SIDED_TEST] =
+        { 0x0056261Fu, "the polygon loop's facing test, TEST AH,4 / JNZ 0x0056264C (F6 C4 04 75 28): face flag 0x400 skips it - two-sided; 0x00562624 the test itself (gltwosided.c)" },
+    [U9SYM_SPEECH215_WORLD_GATE] =
+        { 0x0054FAAEu, "U9Trigger_Execute opcode 0x30, arg1 type 215: TEST BYTE PTR [ECX+0x14],0x10 / JZ 0x00550301 (F6 41 14 10 0F 84 49 08 00 00) - a source not in the world (in a container) skips the speech (lettbook.c)" },
+    [U9SYM_SPEECH215_PASS] =
+        { 0x0054FAB8u, "U9Trigger_Execute opcode 0x30 type 215, MOV AX,[ESI+4] (66 8B 46 04): the topic read, where the in-world test lets the speech go on" },
+    [U9SYM_SPEECH215_SKIP] =
+        { 0x00550301u, "U9Trigger_Execute: the next record - where opcode 0x30's type-215 path goes when its source is not in the world" },
+    [U9SYM_BOOK_CLOSE_SLOT] =
+        { 0x00742CBCu, "vtable 0x00742C70 (the book) slot 19 (+0x4C) -> 0x004231F0 Book_Close: thiscall (book), RET; calls Book_CloseScene" },
+    [U9SYM_OBJECT_SAY] =
+        { 0x00624680u, "0x00624680, fastcall (object, 0, text, 2, 1), RET 0xC: shows a line of text at a world object - Door_Use's 'You unlock the door.' (0x0063BB3F)" },
+    [U9SYM_MODEL_RECORD_TEST] =
+        { 0x005A5898u, "Model_Build (0x005A5830): CMP EBP,ESI / MOV [ESP+0x10],EBP / JNZ - the model record's null test" },
+    [U9SYM_MODEL_RECORD_OK] =
+        { 0x005A58AEu, "Model_Build: the record's header read, where the null test's JNZ goes" },
+    [U9SYM_MODEL_RECORD_NONE] =
+        { 0x005A58A0u, "Model_Build: no record - undoes its counter and returns 0, so the caller frees the model" },
+    [U9SYM_SOUNDSRC_RESOLVE_CALL] =
+        { 0x005373FFu, "FUN_005373A0 (sound sources by distance): CALL FastRef_ResolveRecord for an object in the fast area" },
+    [U9SYM_SOUNDSRC_RESOLVED] =
+        { 0x00537404u, "FUN_005373A0: MOV ECX,EAX after the resolve" },
+    [U9SYM_SOUNDSRC_WORLD_POS] =
+        { 0x00537417u, "FUN_005373A0: the branch taking the object's world position (0x004BE730), ECX = object" },
+    [U9SYM_FASTREF_SLOT_OR_REACQUIRE] =
+        { 0x004CD1D0u, "FastRef_SlotOrReacquire: thiscall on [[[0x00AD127C]+0x64]+0xD0], (object), RET 4; 0 when the object has no slot" },
+    [U9SYM_FASTREF_RESOLVE_RECORD] =
+        { 0x004BF7B0u, "FastRef_ResolveRecord: ECX = object; does not test the slot before FastRef_CachedRecord" },
+    [U9SYM_TYPE_TABLE_LOAD_CALL] =
+        { 0x0049672Fu, "FUN_00496300: CALL TypeTable_Load (0x005532E0), which rebuilds g_itemTypeTable from types.dat" },
+    [U9SYM_GOLD_BLIT_THOUSANDS] =
+        { 0x005CC8E7u, "GoldWidget_Draw: CALL Bitmap_Blit for the thousands digit (y 0x43)" },
+    [U9SYM_GOLD_BLIT_HUNDREDS] =
+        { 0x005CC918u, "GoldWidget_Draw: CALL Bitmap_Blit for the hundreds digit" },
+    [U9SYM_GOLD_BLIT_TENS] =
+        { 0x005CC949u, "GoldWidget_Draw: CALL Bitmap_Blit for the tens digit" },
+    [U9SYM_GOLD_BLIT_UNITS] =
+        { 0x005CC96Eu, "GoldWidget_Draw: CALL Bitmap_Blit for the units digit, always drawn, the last" },
+    [U9SYM_SOUND_ASSOC_LOOKUP] =
+        { 0x00531590u, "SoundAssoc_Lookup: thiscall([0x00AD1318], type, &template), RET 8; 0 found, 1 none (sfxassoc.flx)" },
+    [U9SYM_NARRATION_SLOT] =
+        { 0x007580ACu, "vtable 0x007580A8 slot 1 -> 0x00684D40, the narration conversation's run: thiscall (conversation), RET; switches on +0x218 - 0x63 (entry 188 the Lett book's 2-handed lesson)" },
+    [U9SYM_LINEHIT_SEARCH_START] =
+        { 0x00566CADu, "FUN_00566880 (a line test over a shape's candidates), the hit search past the early return: MOV EAX,[ESP+0x74] / TEST AL,0x40 (8B 44 24 74 A8 40); the best-hit local [ESP+0x18] is still a float scratch here (F-25)" },
+    [U9SYM_LINEHIT_SEARCH_JZ] =
+        { 0x00566CB3u, "FUN_00566880: JZ 0x00566D0A (74 55), the test of flag 0x40 that follows" },
+    [U9SYM_LINEHIT_OBJECT_READ] =
+        { 0x00567279u, "FUN_00566880's end: MOV EBP,[EAX+0x14] / JMP 0x00567280 (8B 68 14 EB 02) - the best hit's object, handed to Handle_Alloc at 0x0056728D; -1 there crashed it (F-25)" },
+    [U9SYM_LINEHIT_OBJECT_DONE] =
+        { 0x00567280u, "FUN_00566880: MOV ECX,[EDI] (8B 0F), where both object branches meet" },
+    [U9SYM_CAMHIT_OBJECT_READ] =
+        { 0x00435A40u, "FUN_00435650 (from CameraMgr_FrameUpdate): MOV EAX,[EAX+0x14] / JMP 0x00435A47 (8B 40 14 EB 02) - the camera hit's object's item; a float there crashed it off map 82's edge (F-25)" },
+    [U9SYM_LIMB_FIRST_READ] =
+        { 0x0056F388u, "Collider_LimbShapesForCylinder: MOV EAX,[EAX+0xA8] / ADD EAX,0x30 (8B 80 A8 00 00 00 83 C0 30) on the first qualifying element, null-checked nowhere - EAX 0 or +0xA8 0 faults at 0x0056F391 (F-26)" },
+    [U9SYM_LIMB_FIRST_DONE] =
+        { 0x0056F391u, "Collider_LimbShapesForCylinder: MOV ECX,[EAX+0x4] (8B 48 04), the read through it" },
+    [U9SYM_LIMB_NO_FIRST] =
+        { 0x0056F4A5u, "Collider_LimbShapesForCylinder: MOV [EBX+0x6C],EDI (89 7B 6C), the exit taken when +0x68 is 0 - same stack depth as 0x0056F388" },
+    [U9SYM_CAMHIT_OBJECT_DONE] =
+        { 0x00435A47u, "FUN_00435650: MOV ECX,[0x00850228] (8B 0D 28 02 85 00), where both branches meet" },
 };
 
 static uintptr_t RUNTIME[U9SYM_COUNT];

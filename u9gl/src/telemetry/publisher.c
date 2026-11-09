@@ -9,6 +9,7 @@
 #include "../diag/log.h"
 #include "u9gl_version.h"
 #include "../gl/gpuprof.h"
+#include "../fix/playerstats.h"
 
 int   u9gl_mip_filter_mode(void);
 float u9gl_anisotropy_cached(void);
@@ -22,6 +23,7 @@ static uint32_t g_requested;
 #define WORLD_READ_HZ 2u
 static uint64_t g_worldNext, g_worldQpc, g_worldReads, g_worldTicks, g_worldMax;
 static int g_worldMap = -1, g_worldAvatar, g_worldX, g_worldY, g_worldZ;
+static U9PlayerStats g_player;
 
 #define U9TM_CELL_SLOTS_USABLE 2045u
 
@@ -70,6 +72,10 @@ void u9telemetry_install(void)
         u9log_line("TELEMETRY requests unavailable: request block not created; on-demand groups stay off");
 }
 
+static uint32_t g_combatSeen;
+static int g_stunNow, g_stunSeen;
+static uint64_t g_spellsSeen;
+
 void u9telemetry_frame_end(void)
 {
     U9TelemetryGameRecord sample;
@@ -81,6 +87,15 @@ void u9telemetry_frame_end(void)
     if (!g_transport.view) return;
     began = u9perf_now();
     g_frames++;
+    g_spellsSeen |= u9player_spells_scan();
+    {
+        int st, stun;
+        if (u9player_combat_scan(&st, &stun)) {
+            if (st >= 0 && st < 32) g_combatSeen |= 1u << st;
+            if (stun > 0) g_stunSeen = 1;
+            g_stunNow = stun;
+        }
+    }
     if (began >= g_next) {
         requested = u9telemetry_transport_requests(&g_transport, began);
         if (requested != g_requested) { g_requested = requested; g_requestChanges++; }
@@ -88,6 +103,13 @@ void u9telemetry_frame_end(void)
             uint64_t t = u9perf_now();
             g_worldMap = u9console_current_map();
             g_worldAvatar = u9avatar_position(&g_worldX, &g_worldY, &g_worldZ);
+            u9player_read(&g_player);
+            u9player_purse(&g_player);
+            g_player.activeSpells = g_spellsSeen;
+            g_spellsSeen = 0;
+            g_player.combatStates = g_combatSeen;
+            g_player.stunMs = g_stunNow > 0 ? g_stunNow : g_stunSeen ? 1 : 0;
+            g_combatSeen = 0; g_stunSeen = 0;
             g_worldQpc = t;
             worldSpent = u9perf_now() - t;
             g_worldReads++; g_worldTicks += worldSpent;
@@ -135,6 +157,7 @@ void u9telemetry_frame_end(void)
         in.map = g_worldMap;
         in.avatar_valid = g_worldAvatar;
         in.avatar_x = g_worldX; in.avatar_y = g_worldY; in.avatar_z = g_worldZ;
+        in.player = &g_player;
         u9telemetry_metrics_copy(&in, &sample);
         sample.header.requested_groups = requested;
         elapsed = u9perf_now() - began - worldSpent;

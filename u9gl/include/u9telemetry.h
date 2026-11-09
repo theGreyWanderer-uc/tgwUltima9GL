@@ -41,6 +41,7 @@
 #define U9TM_GROUP_TEXTURE_LIST 16u
 #define U9TM_GROUP_MESH_LIST 17u
 #define U9TM_LIST_ITEMS 256u
+#define U9TM_GROUP_PLAYER 18u
 #define U9TM_GROUP_BIT(id)   (UINT32_C(1) << (id))
 
 #define U9TM_REQUEST_MAGIC  UINT32_C(0x52543955)
@@ -258,6 +259,32 @@ typedef struct U9TelemetryMeshList {
     uint64_t item[U9TM_LIST_ITEMS];
 } U9TelemetryMeshList;
 
+typedef struct U9TelemetryPlayer {
+    uint64_t collected_qpc;
+    uint64_t record_valid;
+    int64_t  strength, dexterity, intelligence;
+    uint64_t health, health_max, health_base;
+    uint64_t mana, mana_max, mana_base;
+    uint64_t breath, breath_max, breath_base;
+    uint64_t armour, armour_bonus, magic_resist_bonus;
+    uint64_t state_flags;
+    int64_t  weapon;
+    int64_t  skill_fists, skill_one_handed, skill_two_handed, skill_staff, skill_ranged;
+    uint64_t datums_valid;
+    uint64_t class_chosen;
+    uint64_t class_id;
+    uint64_t shrines;
+    uint64_t spells_lo, spells_hi;
+    int64_t  equip_left_hand, equip_right_hand, equip_scabbard;
+    int64_t  equip_left_shoulder, equip_right_shoulder, equip_quiver, equip_left_forearm;
+    int64_t  equip_hands_class;
+    int64_t  gold, arrows;
+    uint64_t active_spells;
+    uint64_t spell_discount;
+    uint64_t combat_states;
+    int64_t  stun_ms;
+} U9TelemetryPlayer;
+
 typedef struct U9TelemetryRequest {
     uint32_t magic;
     uint16_t major, minor;
@@ -289,6 +316,7 @@ U9TM_ASSERT(u9tm_gpu_size, sizeof(U9TelemetryGpu) == 128);
 U9TM_ASSERT(u9tm_area_cells_size, sizeof(U9TelemetryAreaCells) == 8 * (9 + U9TM_AREA_CELLS));
 U9TM_ASSERT(u9tm_texture_list_size, sizeof(U9TelemetryTextureList) == 8 * (3 + U9TM_LIST_ITEMS));
 U9TM_ASSERT(u9tm_mesh_list_size, sizeof(U9TelemetryMeshList) == 8 * (3 + U9TM_LIST_ITEMS));
+U9TM_ASSERT(u9tm_player_size, sizeof(U9TelemetryPlayer) == 8 * 44);
 U9TM_ASSERT(u9tm_request_size, sizeof(U9TelemetryRequest) == U9TM_REQUEST_BYTES);
 U9TM_FIELD(U9TelemetryHeader, magic, 0);
 U9TM_FIELD(U9TelemetryHeader, major, 4);

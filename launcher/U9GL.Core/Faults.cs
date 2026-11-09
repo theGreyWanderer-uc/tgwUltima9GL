@@ -75,5 +75,17 @@ public static class Faults
         "Crash in the scripted fight between Lord British and Blackthorn",
         "When his Rings of Fire overlap, the game takes a burning ring for a spell and deletes it as one.");
 
-    public static IReadOnlyList<Fault> All { get; } = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F11, F12, F13, F15, F16, F17, F18, F19];
+    public static Fault F23 { get; } = new("F-23",
+        "Crash loading a model the game cannot read",
+        "A few models in the game's data are in a layout the game cannot read; building one runs past its end.");
+
+    public static Fault F24 { get; } = new("F-24",
+        "Crash on arriving at a new map, in the sound update",
+        "A sound's object is unloaded by the map change, and the game looks it up without checking.");
+
+    public static Fault F25 { get; } = new("F-25",
+        "Crash at the edge of a map, in a collision check",
+        "Past the edge of a map that does not wrap, a collision check finds something that is not an object, and the game uses it as one.");
+
+    public static IReadOnlyList<Fault> All { get; } = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F11, F12, F13, F15, F16, F17, F18, F19, F23, F24, F25];
 }

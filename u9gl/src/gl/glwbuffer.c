@@ -6,6 +6,7 @@
 
 float u9glpost_effect_lod_bias(int effect);
 int   u9glpost_depth_glide(void);
+int   u9glpost_depth_slack(void);
 int   u9gl_effect_run_now(void);
 
 #define GL_FRAGMENT_SHADER 0x8B30
@@ -50,10 +51,10 @@ static GLuint g_prog;
 static GLint  g_uTex, g_uTextured, g_uAlphaTest, g_uAlphaRef, g_uFog,
               g_uZRef, g_uZFar, g_uLightable, g_uGlow, g_uBloom, g_uFade, g_uLodBias, g_uAlphaScale,
               g_uRgbScale, g_uSelfLit, g_uUi, g_uMark,
-              g_uDepthGlide, g_uRune, g_uRuneTex, g_uRuneTint;
+              g_uDepthGlide, g_uSlack, g_uRune, g_uRuneTex, g_uRuneTint;
 static int    g_lastTextured = -1, g_lastAlphaTest = -1, g_lastLightable = -1, g_lastGlow = -1;
 static float  g_lastBloom = -1.0f, g_lastAlphaScale = -1.0f, g_lastRgbScale = -1.0f;
-static int    g_lastSelfLit = -1, g_lastUi = -1;
+static int    g_lastSelfLit = -1, g_lastUi = -1, g_lastSlack = -1;
 static float  g_lastFade = -1.0f, g_lastLodBias = -1.0f;
 static int    g_lastRune = -1;
 static float  g_lastAlphaRef = -1.0f;
@@ -82,6 +83,7 @@ static const char *const k_fragment =
     "uniform float u_zRef;\n"
     "uniform float u_zFar;\n"
     "uniform int   u_depthGlide;\n"
+    "uniform float u_slack;\n"
     "uniform int   u_rune;\n"
     "uniform sampler2D u_runeTex;\n"
     "uniform vec3  u_runeTint;\n"
@@ -97,7 +99,7 @@ static const char *const k_fragment =
     "uniform float u_lodBias;\n"
     "void main() {\n"
     "    vec4 c = gl_Color;\n"
-    "    vec4 t = vec4(0.6, 0.6, 0.6, 1.0);\n"
+    "    vec4 t = vec4(gl_Color.rgb, 1.0);\n"
     "    if (u_textured != 0) { t = texture2DProj(u_tex, gl_TexCoord[0], u_lodBias); c *= t; }\n"
     "    if (u_selfLit != 0 && u_textured != 0) c.rgb = t.rgb;\n"
     "    if (u_alphaTest != 0 && c.a <= u_alphaRef) discard;\n"
@@ -122,6 +124,7 @@ static const char *const k_fragment =
     "    if (u_depthGlide != 0) {\n"
     "        float st = exp2(floor(log2(max(w, 1.0))) - 12.0);\n"
     "        w = floor(w / st + 0.5) * st;\n"
+    "        w -= u_slack * st;\n"
     "    }\n"
     "    gl_FragDepth = clamp((w - u_zRef) / (u_zFar - u_zRef), 0.0, 1.0);\n"
     "    gl_FragData[0] = c;\n"
@@ -221,6 +224,7 @@ static void build(void)
     g_uZRef      = fGetUniformLocation(prog, "u_zRef");
     g_uZFar      = fGetUniformLocation(prog, "u_zFar");
     g_uDepthGlide = fGetUniformLocation(prog, "u_depthGlide");
+    g_uSlack      = fGetUniformLocation(prog, "u_slack");
     g_uRune      = fGetUniformLocation(prog, "u_rune");
     g_uRuneTex   = fGetUniformLocation(prog, "u_runeTex");
     g_uRuneTint  = fGetUniformLocation(prog, "u_runeTint");
@@ -259,6 +263,8 @@ int u9gl_wbuf_begin(float zRef, float zFar, int fog)
     g_lastRgbScale = 1.0f;
     fUniform1i(g_uSelfLit, 0);
     g_lastSelfLit = 0;
+    fUniform1f(g_uSlack, 0.0f);
+    g_lastSlack = 0;
     fUniform1i(g_uUi, 0);
     g_lastUi = 0;
     fUniform1i(g_uMark, 0);
@@ -338,6 +344,15 @@ void u9gl_wbuf_selflit(int on)
     if (!g_prog || on == g_lastSelfLit) return;
     fUniform1i(g_uSelfLit, on);
     g_lastSelfLit = on;
+}
+
+void u9gl_wbuf_slack(int on)
+{
+    on = on ? 1 : 0;
+    if (on) on = u9glpost_depth_slack();
+    if (!g_prog || on == g_lastSlack) return;
+    fUniform1f(g_uSlack, (float)on);
+    g_lastSlack = on;
 }
 
 void u9gl_wbuf_ui(int on)

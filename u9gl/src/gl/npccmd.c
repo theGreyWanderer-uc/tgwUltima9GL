@@ -24,7 +24,7 @@ typedef int  (U9CALL *PlaceNearFn)(void *mover, const float *dest, float facing,
 typedef void (U9CALL *SetTargetFn)(void *actorTable, void *source, void *target);
 
 static const struct { const char *name; uint32_t bit; } g_flags[] = {
-    { "cannot_die", 0x00000001u },       { "venomed", 0x00000002u },
+    { "cannot_die", 0x00000001u },       { "poisoned", 0x00000002u },
     { "diseased", 0x00000004u },         { "hexed", 0x00000008u },
     { "ward_active", 0x00000010u },      { "life_depleted", 0x00000020u },
     { "sleeping", 0x00000040u },         { "power_boosted", 0x00000080u },

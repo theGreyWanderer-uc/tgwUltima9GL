@@ -35,6 +35,7 @@ static const char *STATUS_TEXT[] = {
 
 typedef struct {
     const U9PatchSpec *spec;
+    U9PatchSpec own;
     uintptr_t   addr;
     unsigned    length;
     uint8_t     saved[SAVE_MAX];
@@ -63,7 +64,8 @@ static Record *record_new(const U9PatchSpec *spec, uintptr_t addr)
         u9log_line("PATCH WARNING registry 90%% full (%u of %u) - raise U9PATCH_MAX",
                    g_count, (unsigned)U9PATCH_MAX);
     memset(r, 0, sizeof(*r));
-    r->spec = spec;
+    r->own  = *spec;
+    r->spec = &r->own;
     r->addr = addr;
     r->length = spec->length;
     return r;

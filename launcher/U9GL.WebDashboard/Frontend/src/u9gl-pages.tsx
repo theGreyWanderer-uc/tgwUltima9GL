@@ -5,7 +5,9 @@ import { LcarsBarGraph } from "./components/ui/lcars/lcars-graphs";
 import { U9glHeatmap } from "./u9gl-heatmap";
 import { U9glMeshList, U9glTextureList } from "./u9gl-lists";
 import type { LcarsSystemState } from "./components/ui/lcars/lcars-telemetry";
-import { MetricReadout, U9glCapacity, metricNumber, pendingGated, type Metric, type MetricContext } from "./u9gl-metrics";
+import { MetricReadout, U9glCapacity, metricNumber, metricReading, pendingGated, type Metric, type MetricContext } from "./u9gl-metrics";
+import { formatMebibytes } from "./u9gl-memory-readout";
+import { band, type BandCode } from "./u9gl-band";
 import { levelAbove, levelBelow, thresholds, worse } from "./u9gl-thresholds";
 
 export type SectionPage = "rendering" | "memory" | "textures" | "world";
@@ -206,11 +208,67 @@ export const metricLabels: ReadonlyMap<string, string> = new Map(Object.values(s
   .flatMap(section => section.metrics).filter(metric => metric.group && metric.field && !metric.derive && !metric.text)
   .map(metric => [`${metric.group}.${metric.field}`, metric.label] as const).reverse());
 
+const pct = (p: number | null, state: (p: number) => LcarsSystemState): BandCode =>
+  p === null ? null : { text: `${Math.round(p)}%`, state: state(p) };
+const mib = (bytes: string | null, state?: LcarsSystemState): BandCode =>
+  bytes === null ? null : { text: `${formatMebibytes(bytes)} MiB`, ...(state ? { state } : {}) };
+const fpsCode = (ctx: MetricContext): BandCode => {
+  const fps = metricNumber(m.fps, ctx);
+  return fps === null ? null : { text: `${fps.toFixed(0)} fps`, state: levelBelow(fps, thresholds.fpsWarning, thresholds.fpsCritical) };
+};
+const privateCode = (ctx: MetricContext): BandCode => {
+  const used = value(ctx, "memory", "privateBytes"), total = ctx.view?.game?.addressSpaceBytes ?? null;
+  const p = percentOf(used, total);
+  return mib(used, p === null ? undefined : privateState(p));
+};
+const floorCode = (ctx: MetricContext): BandCode => {
+  const r = metricReading(m.verdict, ctx);
+  if (r.state === "offline") return null;
+  const g = ctx.sample?.groups.memoryTrend?.values ?? {};
+  const word = m.verdict.text(g, String(r.value));
+  return { text: word, state: word === "rising" ? "warning" : "nominal" };
+};
+const largestCode = (ctx: MetricContext): BandCode => {
+  const v = value(ctx, "addressSpace", "largestFreeBytes");
+  return v === null ? null : mib(v, levelBelow(Number(BigInt(v) >> 20n), thresholds.largestBlockWarningMiB, thresholds.largestBlockCriticalMiB));
+};
+const cacheCode = (ctx: MetricContext): BandCode => pct(percentOf(value(ctx, "textureCache", "cacheBytes"), value(ctx, "textureCache", "budgetBytes")), () => "nominal");
+const vramCode = (ctx: MetricContext): BandCode => value(ctx, "vram", "source") === "0" ? null
+  : pct(percentOf(value(ctx, "vram", "localUsageBytes"), value(ctx, "vram", "localBudgetBytes")), vramState);
+const objectsCode = (ctx: MetricContext): BandCode => {
+  const n = value(ctx, "area", "objects");
+  if (n === null) return null;
+  const p = percentOf(value(ctx, "area", "worstCell"), value(ctx, "area", "worstCellCapacity"));
+  return { text: BigInt(n).toLocaleString("en-US"), state: p === null ? "nominal" : cellState(p) };
+};
+const poolsCode = (ctx: MetricContext): BandCode => {
+  const p = [percentOf(value(ctx, "area", "nonfixedUsed"), value(ctx, "area", "nonfixedMax")),
+    percentOf(value(ctx, "area", "fixedUsed"), value(ctx, "area", "fixedMax"))].filter((x): x is number => x !== null);
+  return p.length ? pct(Math.max(...p), poolState) : null;
+};
+const sectionCodes: Record<string, (ctx: MetricContext) => BandCode> = {
+  "Frame pacing": fpsCode,
+  "Per frame": ctx => { const d = value(ctx, "frames", "drawCallsLast"); return d === null ? null : { text: `${BigInt(d).toLocaleString("en-US")} draws` }; },
+  "Process": privateCode, "Process memory": privateCode,
+  "Leak indicator": floorCode, "Memory floor": floorCode,
+  "Address space": largestCode,
+  "Texture cache": cacheCode,
+  "Video memory": vramCode,
+  "Location": ctx => { const r = metricReading(m.mapName, ctx); if (r.state === "offline") return null;
+    const v = ctx.sample?.groups.world?.values ?? {}; return { text: m.mapName.text(v, String(r.value), ctx.sample?.labels ?? {}) }; },
+  "Objects": objectsCode, "Nearby objects": objectsCode,
+  "Item pools": poolsCode,
+  "Mesh cache": ctx => { const n = value(ctx, "area", "meshUsers"); return n === null ? null : { text: `${BigInt(n).toLocaleString("en-US")} handles` }; },
+  "Game log": ctx => { const log = ctx.view?.log; return !log ? null
+    : { text: log.faults ? `${log.faults} faults` : `${log.warnings} warnings`, state: log.faults ? "critical" : "nominal" }; },
+};
+const codeFor = (title: string, ctx: MetricContext) => sectionCodes[title]?.(ctx) ?? null;
+
 export function U9glSectionPage({ page, ctx }: { page: SectionPage; ctx: MetricContext }) {
   return (
     <div className="u9gl-overlay-grid u9gl-readouts">
       {sectionPages[page].map((section, index) => (
-        <LcarsPanel key={section.title} id={`${page}-group-${index}`} title={section.title} headingLevel="h3"
+        <LcarsPanel key={section.title} band={band(page, index, codeFor(section.title, ctx))} id={`${page}-group-${index}`} title={section.title} headingLevel="h3"
           className={section.wide ? "u9gl-wide" : ""}>
           {section.capacity?.(ctx)}
           {section.metrics.map(metric => <MetricReadout key={metric.label} metric={metric} ctx={ctx} />)}
@@ -262,13 +320,20 @@ const tiles: readonly Tile[] = [
     state: ctx => { const p = percentOf(value(ctx, "vram", "localUsageBytes"), value(ctx, "vram", "localBudgetBytes")); return p === null ? "offline" : vramState(p); } },
 ];
 
+const tileCode = (tile: Tile, ctx: MetricContext): BandCode => {
+  const code = codeFor(tile.title, ctx);
+  if (!code) return null;
+  const state = tile.state(ctx);
+  return { text: code.text, state: state === "offline" ? "nominal" : state };
+};
+
 export function U9glOverview({ ctx }: { ctx: MetricContext }) {
   const game = ctx.view?.game;
   return (
     <>
       <div className="u9gl-overview-grid u9gl-readouts">
         {tiles.map((tile, index) => (
-          <LcarsPanel key={tile.title} id={`overview-tile-${index}`} title={tile.title} headingLevel="h3" className="u9gl-tile">
+          <LcarsPanel key={tile.title} band={band("overview", index, tileCode(tile, ctx))} id={`overview-tile-${index}`} title={tile.title} headingLevel="h3" className="u9gl-tile">
             <LcarsStatus label="Status" state={tile.state(ctx)} {...(tile.detail ? { detail: tile.detail(ctx) } : {})} />
             {tile.capacity?.(ctx)}
             {tile.metrics.map(metric => <MetricReadout key={metric.label} metric={metric} ctx={ctx} />)}
@@ -276,7 +341,7 @@ export function U9glOverview({ ctx }: { ctx: MetricContext }) {
           </LcarsPanel>
         ))}
       </div>
-      <LcarsPanel id="overview-location" title="Location" headingLevel="h3" className="u9gl-location u9gl-readouts">
+      <LcarsPanel band={band("overview", tiles.length, codeFor("Location", ctx))} id="overview-location" title="Location" headingLevel="h3" className="u9gl-location u9gl-readouts">
         <div className="u9gl-location-strip">
           {[m.mapName, ...avatar].map(metric => <MetricReadout key={metric.label} metric={metric} ctx={ctx} />)}
         </div>

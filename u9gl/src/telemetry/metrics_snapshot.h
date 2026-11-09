@@ -4,8 +4,9 @@
 #include "../gl/metrics.h"
 #include "../diag/objstats.h"
 #include "../gl/gltexlist.h"
+#include "../fix/playerstats.h"
 
-#define U9TM_GAME_GROUPS 17u
+#define U9TM_GAME_GROUPS 18u
 typedef struct U9TelemetryGameRecord {
     U9TelemetryHeader header;
     U9TelemetryGroupEntry directory[U9TM_GAME_GROUPS];
@@ -26,6 +27,7 @@ typedef struct U9TelemetryGameRecord {
     U9TelemetryAreaCells area_cells;
     U9TelemetryTextureList texture_list;
     U9TelemetryMeshList mesh_list;
+    U9TelemetryPlayer player;
 } U9TelemetryGameRecord;
 
 typedef struct U9TelemetryInputs {
@@ -39,6 +41,7 @@ typedef struct U9TelemetryInputs {
     uint64_t world_qpc;
     int map;
     int avatar_valid, avatar_x, avatar_y, avatar_z;
+    const U9PlayerStats *player;
     const U9MetricsHeavy *heavy;
     const U9ObjStats *area;
     unsigned cell_slots_usable;

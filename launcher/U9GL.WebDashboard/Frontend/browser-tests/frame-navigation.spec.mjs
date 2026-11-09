@@ -34,13 +34,22 @@ test("joined frame keeps full-height rail and separated frozen links across them
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByRole("main")).toHaveCount(1);
   await expect(page.locator(".lcars-display-frame")).toHaveAttribute("data-sticky-sidebar", "true");
-  await page.getByRole("navigation", { name: "Dashboard navigation" }).getByRole("link", { name: "History 06" }).click();
-  await page.locator(".lcars-time-trend summary").first().click();
+  const navigation = page.getByRole("navigation", { name: "Dashboard navigation" });
   const themes = await page.getByRole("combobox", { name: "Theme", exact: true }).locator("option").evaluateAll(options => options.map(option => option.value));
-  for (const theme of themes) {
+  const lookAt = async (theme, density) => {
+    await navigation.getByRole("link", { name: "Overview 01" }).click();
     await page.getByRole("combobox", { name: "Theme", exact: true }).selectOption(theme);
+    await page.getByRole("combobox", { name: "Density", exact: true }).selectOption(density);
+    await navigation.getByRole("link", { name: "History 07" }).click();
+    await expect(page.getByRole("combobox", { name: "Theme", exact: true })).toHaveCount(0);
+    await expect(page.locator("[data-feed-state]")).toHaveCount(0);
+    await expect(page.locator(".lcars")).toHaveAttribute("data-lcars-theme", theme);
+    await expect(page.locator(".lcars")).toHaveAttribute("data-lcars-density", density);
+    await page.locator(".lcars-time-trend summary").first().click();
+  };
+  for (const theme of themes) {
     for (const density of ["comfortable", "compact"]) {
-      await page.getByRole("combobox", { name: "Density", exact: true }).selectOption(density);
+      await lookAt(theme, density);
       for (const size of [16, 32]) {
         await page.evaluate(px => { document.documentElement.style.fontSize = px + "px"; window.scrollTo(0, 0); }, size);
         const before = await frameGeometry(page);
@@ -62,7 +71,10 @@ test("joined frame keeps full-height rail and separated frozen links across them
     }
   }
   await page.evaluate(() => { document.documentElement.style.fontSize = "16px"; window.scrollTo(0, 0); });
+  await navigation.getByRole("link", { name: "Overview 01" }).click();
   await page.getByRole("checkbox", { name: "Freeze navigation" }).uncheck();
+  await navigation.getByRole("link", { name: "History 07" }).click();
+  await page.locator(".lcars-time-trend summary").first().click();
   await page.evaluate(() => window.scrollTo(0, 700));
   const unfrozen = await frameGeometry(page);
   expect(unfrozen.position).toBe("static");

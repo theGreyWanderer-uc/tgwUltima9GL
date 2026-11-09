@@ -1,0 +1,658 @@
+{
+  "graphics": [
+    {
+      "title": "Enhanced graphics",
+      "description": "Draws each frame offscreen and finishes it in a second pass. Lamp light, shadows, the night look and gamma below all need it; Off is the original picture.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off (the original picture)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Lamp light",
+      "description": "Candles, torches and lamps light the world per pixel and stay on their own side of walls; the original lets them shine through walls. Shadows: the Avatar, furniture and fences shade the floor and walls, from up to 8 lamps. Only what is on screen casts a shadow.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off (the original)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Sun shadows",
+      "description": "The Avatar, buildings and trees cast shadows away from the sun, which follows the time of day; roofs shade the rooms under them. They lengthen toward evening and fade at dusk and in storms.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Moon shadows",
+      "description": "At night the brighter moon casts faint shadows, as the sun does by day: strongest at full moon, none at new moon, fading at dusk, dawn and in storms.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Night look",
+      "description": "At night the world is greyed, darkened and cooled, so lamps stand out. It follows the game\u0027s own light, so dusk, dawn and storms are part way and dungeons unchanged.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Underwater haze",
+      "description": "Under the water, the view fades into a deep blue with distance, red first, and grows darker the deeper you are. The original shows the water as clear as air.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off (the original)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Underwater caustics",
+      "description": "Under the water, a moving web of light from the ripples above plays over the seabed and whatever stands on it, softer the deeper it lies. Not in caves and dungeons.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Underwater light shafts",
+      "description": "Under the water, sunlight slants down through the surface in beams that follow the sun and fade at dusk, in storms and at night.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Anti-aliasing",
+      "description": "Draws the world at twice the width and height and averages it down, so edges, leaves and distant ground stop shimmering. Costs drawing time.",
+      "choices": [
+        {
+          "label": "Off",
+          "note": ""
+        },
+        {
+          "label": "On (2\u00D7 supersampling)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Draw distance",
+      "description": "How far the world is drawn above ground. Further costs drawing time.",
+      "choices": [
+        {
+          "label": "5000 (the original)",
+          "note": ""
+        },
+        {
+          "label": "8000",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Building draw distance",
+      "description": "How far buildings and other objects are drawn above ground; the land goes on to the draw distance. Underground the dungeon draw distance covers both. Further costs drawing time.",
+      "choices": [
+        {
+          "label": "4000",
+          "note": ""
+        },
+        {
+          "label": "5000",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Dungeon draw distance",
+      "description": "How far the world is drawn underground - dungeons, and some open places such as the elemental planes. Further costs drawing time.",
+      "choices": [
+        {
+          "label": "2000 (the original)",
+          "note": ""
+        },
+        {
+          "label": "4000",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Small object distance",
+      "description": "How far small things - lantern glows, small props - are drawn before the game drops them. Further costs drawing time.",
+      "choices": [
+        {
+          "label": "1000 (the original)",
+          "note": ""
+        },
+        {
+          "label": "4000",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Model detail distance",
+      "description": "How far buildings and other models keep their full detail before the game swaps in a simpler version. 2 keeps it twice as far. Further costs drawing time.",
+      "choices": [
+        {
+          "label": "1 (the original)",
+          "note": ""
+        },
+        {
+          "label": "2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Game brightness",
+      "description": "Applies the game\u0027s own brightness setting to the game\u0027s window only. Off ignores it, as U9GL did before.",
+      "choices": [
+        {
+          "label": "Applied",
+          "note": ""
+        },
+        {
+          "label": "Ignored",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Replacement textures",
+      "description": "Draws images from the \u0022textures\u0022 folder beside U9GL.exe in place of the game\u0027s own, at any size. Each file is named for the texture it replaces.",
+      "choices": [
+        {
+          "label": "Off",
+          "note": ""
+        },
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Texture detail",
+      "description": "The game\u0027s own textures load at full size. Replacements always draw at their own size.",
+      "choices": [
+        {
+          "label": "Full (the original)",
+          "note": ""
+        }
+      ]
+    }
+  ],
+  "game": [
+    {
+      "title": "Windows key",
+      "description": "Whether the Windows key works while the game has focus.",
+      "choices": [
+        {
+          "label": "Works as normal",
+          "note": ""
+        },
+        {
+          "label": "Disabled while playing",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Screenshot (Ctrl\u002BP)",
+      "description": "What Ctrl\u002BP saves into the game folder. Print Screen is left to Windows; Ctrl\u002BF9 still saves U9GL\u0027s own frame dump.",
+      "choices": [
+        {
+          "label": "Off",
+          "note": ""
+        },
+        {
+          "label": "The game\u0027s picture, before U9GL (PNG)",
+          "note": ""
+        },
+        {
+          "label": "The finished picture (PNG)",
+          "note": ""
+        },
+        {
+          "label": "The finished picture, as the game\u0027s TGA",
+          "note": ""
+        },
+        {
+          "label": "Both PNGs, before and after, to compare",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Gold limit",
+      "description": "The most gold the Avatar can carry. Past 9,999 the backpack shows thousands: 12,345 reads 12.",
+      "choices": [
+        {
+          "label": "9,999 (the original)",
+          "note": ""
+        },
+        {
+          "label": "999,999",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Backpack and bag",
+      "description": "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold far more. Back on the grid, items past 20 (9 in a bag) drop beside the Avatar.",
+      "choices": [
+        {
+          "label": "Original grid (20 items, bag 9)",
+          "note": ""
+        },
+        {
+          "label": "Free placement, up to 1,024 items",
+          "note": ""
+        },
+        {
+          "label": "Free placement, up to 4,096 items",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Usable halberds",
+      "description": "The game has a finished halberd, a staff weapon with its own icon, but leaves every halberd in the world as scenery. On lets you pick them up, carry them and fight with them, with the battleaxe\u0027s sounds. Off is the original game.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off (the original)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Enemies in combat",
+      "description": "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. Enemies backing away are unchanged.",
+      "choices": [
+        {
+          "label": "Walk (the original)",
+          "note": ""
+        },
+        {
+          "label": "Run",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Large address space",
+      "description": "Up to 4 GB of memory instead of 2 GB, for many high-resolution textures. U9GL starts a copy, u9-laa.exe; your u9.exe is never changed.",
+      "choices": [
+        {
+          "label": "Off (the original, 2 GB)",
+          "note": ""
+        },
+        {
+          "label": "On (4 GB)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Seeing into buildings",
+      "description": "How far from an open building its contents still show. At 700 they can vanish from just outside; 1500 is advised.",
+      "choices": [
+        {
+          "label": "700 (the original)",
+          "note": ""
+        },
+        {
+          "label": "1500",
+          "note": ""
+        },
+        {
+          "label": "3000",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Metrics overlay",
+      "description": "Panels: general, objects and textures. Ctrl\u002BF12 cycles them while playing.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        },
+        {
+          "label": "Off at start",
+          "note": ""
+        }
+      ]
+    }
+  ],
+  "fixes": [
+    {
+      "title": "Start new actors with clean memory",
+      "description": "Prevents the crash when loading a save, and hostile NPCs that never attack.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Check actors\u0027 target lists",
+      "description": "Prevents the crash when loading a save when a list is already damaged.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Keep attack timing valid",
+      "description": "Keeps hostile NPCs that never attack from coming back when the game re-registers an actor.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Rebuild spell tables for new actors",
+      "description": "Makes spellcasting independent of leftover memory, so spellcasters behave the same however the game was started.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Guard the teleport spell",
+      "description": "Prevents the crash when a spellcaster teleports.",
+      "choices": [
+        {
+          "label": "On",
+          "note": "when it steps in, that teleport is cancelled and the spellcaster stays put"
+        }
+      ]
+    },
+    {
+      "title": "Guard cutscene textures",
+      "description": "Prevents the crash when a cutscene starts or is skipped.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Guard the world while flying",
+      "description": "Prevents the crash while flying. When the world streams in and out fast, a missing object is noted in the log and skipped.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "End spells whose caster is gone",
+      "description": "Prevents the crash when a spell lands after its caster is gone, and the crash when a creature\u0027s attack lands after the creature is gone. A spell whose caster has been unloaded - you flew or ran far away - fizzles instead of landing.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Creatures stop at a fallen Avatar",
+      "description": "Prevents the crash when a dragon attacks a target it has already lost, and the crash after the Avatar dies, while creatures are still around him. Once a monster has killed you, creatures no longer attack, turn toward or measure the distance to a character the game has already removed.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Rings of Fire are not mistaken for spells",
+      "description": "Prevents the crash in the scripted fight between Lord British and Blackthorn. When two Rings of Fire overlap, the game no longer takes a burning ring for a spell and deletes it as one.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Skip models the game cannot read",
+      "description": "Prevents the crash loading a model the game cannot read. A handful of models in the game\u0027s data are stored in a layout the game cannot read, and asking for one crashes it. With this fix the object is drawn as the game\u0027s plain placeholder instead.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "See-through flames and effects",
+      "description": "Some of the game\u0027s flames, sparks, lava bursts and other effects were painted on a purple background meant to be see-through, which the game never cuts out. U9GL cuts it out, so they show without purple boxes around them.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Sounds survive a map change",
+      "description": "Prevents the crash on arriving at a new map, in the sound update. When a map change unloads the object a sound belongs to, the game measures the sound from where the object was last placed instead of crashing.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Collision checks at a map\u0027s edge",
+      "description": "Prevents the crash at the edge of a map, in a collision check. A collision check that finds no real object past the edge of a map is treated as finding nothing, instead of crashing the game.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Shrine cleansings always finish",
+      "description": "Prevents the crash while a shrine is being cleansed. If the shrine\u0027s own rune or item has been picked up, moved or left on another map, the cleansing brings it back to the altar, or makes a new one.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Lett\u0027s book teaches from the backpack",
+      "description": "Sir William Lett\u0027s book in his tomb teaches the last two-handed move, but the game only lets it when the book is read lying on the ground, and never says whether it worked. With this on it teaches the same way when read from the backpack, and when the book is closed a line says whether you learned it. The lesson still needs Adept dexterity and Journeyman two-handed skill.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Keep rain splashes out of buildings",
+      "description": "In rain, splashes could show on the floor inside a building, as in Lord British\u0027s throne room. With this on, rain that falls into a room makes no splash.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Clear the storm\u0027s haze indoors",
+      "description": "In rain the whole scene is fogged, rooms included, so a long room fills with haze. With this on, the fog inside a building is as in clear weather.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "No lightning flash in closed rooms",
+      "description": "Lightning lights every wall in view. In closed rooms and high halls such as Lord British\u0027s throne room that looks wrong, so with this on a strike there stays dark. Houses with windows keep their flashes, and thunder is unchanged.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Fix slow motion after long uptime",
+      "description": "Prevents the slow-motion animation after Windows has been on for about 25 days. The game counts time from when Windows started; with Fast Startup a Shut down does not reset it, and past about 25 days animation crawls. This makes the game count from when it starts instead.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Let spellcasters\u0027 teleports land",
+      "description": "A spellcaster\u0027s teleport plays its effects but mostly leaves her where she was, and between spells she walks back up to you. This tests the spot before she casts, moves it to nearby ground that fits, and sets her down on the ground - not in the air, and not up on a roof. She then holds her ground at range and is ready to cast almost as soon as she lands.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Chasing enemies find their way to you",
+      "description": "When an enemy chasing you is blocked, the original game sends it on a detour to where you were when the chase began, planned as if trees were not there, so it can walk past you or stay stuck behind a tree. This aims the detour at where you are now and makes it go round what blocked it.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Meshes are unloaded when no longer used",
+      "description": "The original game keeps an extra reference on some objects\u0027 meshes each time it builds their collision, so those meshes are never unloaded and near Moonglow the count climbs by thousands a second. This drops the extra reference.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Free birds stuck in trees",
+      "description": "Birds and vultures that spawn inside a tree cannot fly out, and cry again and again. This notices a flying creature that keeps trying to move and cannot, for more than two and a half seconds, and sets it down at a free spot nearby. Perched and feeding birds are left alone.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Doors open and close properly",
+      "description": "Some doors swing past closed, wobble, or end up half open but treated as shut, so the next click opens them further. Triggers beside those doors start a second swing while the first is still moving. This lets a door make one swing at a time, keeps a door that stopped short marked open so the next click closes it, and closes doors already left half open in a save.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Doors close off rooms properly",
+      "description": "The game marks the doorway a shut door stands in as closed, and does not look through it when working out what can be seen from where you are. Loading a save upsets those marks: the first load clears them, so shut doors count as open until they are used, and a later load can leave a door\u0027s doorway marked closed while the door stands open. This puts the marks right from the doors themselves. Nothing changes on screen yet; light through doors and windows will rely on it.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Shopkeepers stay off their counters",
+      "description": "Shopkeepers reading the book on their counter climb up onto it to reach it, and stay standing there. With this on they read it from the floor, and anyone already up on a table or counter walks back down.",
+      "choices": [
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    }
+  ]
+}

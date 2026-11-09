@@ -35,14 +35,15 @@ if ($catalogKeys.Count -lt 50) { Write-Error "found only $($catalogKeys.Count) k
 $diagKeys = [System.Collections.Generic.HashSet[string]]::new()
 foreach ($m in [regex]::Matches($catalogText, 'Diag\("([a-z0-9_]+)"')) { [void]$diagKeys.Add($m.Groups[1].Value) }
 [void]$diagKeys.Add($feedKey)
+function Test-DiagKey([string]$k) { return $diagKeys.Contains($k) -or $k -match '^(diag_|stream_)' }
 
 if ($Check) {
     if (-not (Test-Path $Check)) { Write-Error "$Check not found." }
     $pairs = @(Read-IniPairs ([System.IO.File]::ReadAllText($Check, $latin1) -split "`r?`n"))
     $keys = @($pairs | ForEach-Object Key)
     $repeated = @($pairs | Group-Object Key | Where-Object Count -gt 1 | ForEach-Object Name)
-    $absent = @($catalogKeys | Where-Object { -not $diagKeys.Contains($_) -and $keys -notcontains $_ } | Sort-Object)
-    $diag = @($keys | Where-Object { $diagKeys.Contains($_) })
+    $absent = @($catalogKeys | Where-Object { -not (Test-DiagKey $_) -and $keys -notcontains $_ } | Sort-Object)
+    $diag = @($keys | Where-Object { (Test-DiagKey $_) })
     $problems = @()
     if ($repeated.Count) { $problems += "repeats " + ($repeated -join ', ') }
     if ($absent.Count) { $problems += "lacks " + ($absent -join ', ') + " (made before the launcher had them: make it again)" }
@@ -76,13 +77,13 @@ foreach ($p in $pairs) { $profileValues[$p.Key] = $p.Value }
 if (Test-Path $liveDiag) {
     $left = @()
     foreach ($p in Read-IniPairs ([System.IO.File]::ReadAllText($liveDiag, $latin1) -split "`r?`n")) {
-        if ($profileValues.Contains($p.Key) -and -not $diagKeys.Contains($p.Key)) { $profileValues[$p.Key] = $p.Value } else { $left += $p.Key }
+        if ($profileValues.Contains($p.Key) -and -not (Test-DiagKey $p.Key)) { $profileValues[$p.Key] = $p.Value } else { $left += $p.Key }
     }
     if ($left.Count) { Write-Warning ("u9gl.diag.ini keys not carried (not in the launcher block): {0}" -f (($left | Sort-Object -Unique) -join ', ')) }
 }
-$heldBack = @($profileValues.Keys | Where-Object { $diagKeys.Contains($_) })
+$heldBack = @($profileValues.Keys | Where-Object { (Test-DiagKey $_) })
 foreach ($k in $heldBack) { $profileValues.Remove($k) }
-$authorOn = @($pairs | Where-Object { $diagKeys.Contains($_.Key) -and $_.Value -ne '0' } | ForEach-Object { "$($_.Key) = $($_.Value)" })
+$authorOn = @($pairs | Where-Object { (Test-DiagKey $_.Key) -and $_.Value -ne '0' } | ForEach-Object { "$($_.Key) = $($_.Value)" })
 Write-Host ("diagnostics: {0} left out of the profile, so a fresh install has them off{1}" -f $heldBack.Count,
     $(if ($authorOn.Count) { "; on in the author's settings, not shipped: " + ($authorOn -join ', ') } else { '' }))
 $extra = @($profileValues.Keys | Where-Object { -not $catalogKeys.Contains($_) })

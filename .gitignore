@@ -17,6 +17,8 @@ launcher/**/bin/
 launcher/**/obj/
 *_wpftmp.csproj
 dist/
+website/node_modules/
+website/dist/
 
 .vscode/
 .idea/

@@ -13,6 +13,8 @@ typedef struct {
 
 int u9gl_frame_view(U9FrameView *out);
 
+void u9wz_draw(const U9FrameView *v, int surfW, int surfH, int scale);
+
 int u9glpost_point_covered(const U9FrameView *v, const float p[3], float margin);
 
 unsigned u9glpost_exact_tex(void);

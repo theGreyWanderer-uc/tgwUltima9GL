@@ -9,7 +9,7 @@
 
 typedef struct SyntheticRecord {
     U9TelemetryHeader header;
-    U9TelemetryGroupEntry directory[18];
+    U9TelemetryGroupEntry directory[19];
     uint64_t gap0[2];
     U9TelemetryFrames frames;
     U9TelemetryResources resources;
@@ -29,6 +29,7 @@ typedef struct SyntheticRecord {
     U9TelemetryAreaCells area_cells;
     U9TelemetryTextureList texture_list;
     U9TelemetryMeshList mesh_list;
+    U9TelemetryPlayer player;
     uint64_t unknown[4];
 } SyntheticRecord;
 
@@ -79,7 +80,7 @@ int main(int argc, char **argv)
         if (now_requested != requested) { requested = now_requested; printf("REQUEST 0x%08x\n", (unsigned)requested); fflush(stdout); }
         memset(&sample, 0, sizeof sample);
         sample.header.snapshot_bytes = sizeof sample;
-        sample.header.group_count = 18;
+        sample.header.group_count = 19;
         sample.header.requested_groups = requested;
 #define ENTRY(slot, gid, field) do { sample.directory[slot].id = gid; sample.directory[slot].version = 1; \
         sample.directory[slot].offset = (uint32_t)offsetof(SyntheticRecord, field); \
@@ -102,7 +103,9 @@ int main(int argc, char **argv)
         ENTRY(14, U9TM_GROUP_AREA_CELLS, area_cells);
         ENTRY(15, U9TM_GROUP_TEXTURE_LIST, texture_list);
         ENTRY(16, U9TM_GROUP_MESH_LIST, mesh_list);
-        ENTRY(17, 30, unknown);
+        ENTRY(17, U9TM_GROUP_PLAYER, player);
+        sample.directory[17].version = 3;
+        ENTRY(18, 30, unknown);
 #undef ENTRY
         sample.unknown[0] = now; sample.unknown[1] = n; sample.unknown[2] = n * 3; sample.unknown[3] = n * 7;
         sample.frames.collected_qpc = sample.resources.collected_qpc = sample.memory.collected_qpc = now;
@@ -123,6 +126,17 @@ int main(int argc, char **argv)
         sample.renderer.mip_mode = n % 3; sample.renderer.anisotropy_milli = 8000; sample.renderer.depth_mode = (n + 1) % 3;
         sample.world.map_valid = 1; sample.world.map = 9; sample.world.avatar_valid = 1;
         sample.world.avatar_x = -(int64_t)n; sample.world.avatar_y = (int64_t)n * 2; sample.world.avatar_z = -5;
+        sample.player.collected_qpc = now; sample.player.record_valid = 1;
+        sample.player.strength = 2; sample.player.dexterity = 1; sample.player.intelligence = 2;
+        sample.player.health = 40 + n % 100; sample.player.health_max = 140; sample.player.health_base = 130;
+        sample.player.mana = n % 61; sample.player.mana_max = 60; sample.player.mana_base = 50;
+        sample.player.breath = 30; sample.player.breath_max = 30; sample.player.breath_base = 30;
+        sample.player.armour = 14; sample.player.armour_bonus = 2; sample.player.magic_resist_bonus = 0;
+        sample.player.state_flags = n % 20 < 5 ? 0x2u : 0;
+        sample.player.weapon = 1; sample.player.skill_fists = 1; sample.player.skill_one_handed = 2; sample.player.skill_ranged = 1;
+        sample.player.datums_valid = 1; sample.player.class_chosen = 1; sample.player.class_id = 5; sample.player.shrines = 0x23;
+        sample.player.spells_lo = 0x1E | 0x200000u; sample.player.spells_hi = 0;
+        sample.player.equip_left_hand = 5689; sample.player.equip_right_hand = 1298; sample.player.equip_quiver = 5651; sample.player.equip_hands_class = 4; sample.player.gold = 58; sample.player.arrows = 11; sample.player.active_spells = (uint64_t)1 << 11; sample.player.combat_states = (1u << 5) | (1u << 8); sample.player.stun_ms = 1500;
         sample.texture_cache.cached = n; sample.texture_cache.cache_bytes = n * 65536; sample.texture_cache.budget_bytes = 201326592;
         sample.texture_cache.pending = n % 4; sample.texture_cache.uploads = n * 3; sample.texture_cache.duplicates = n / 2;
         sample.texture_cache.evictions = n / 3; sample.texture_cache.uploads_per_sec = n % 50;

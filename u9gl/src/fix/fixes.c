@@ -17,6 +17,9 @@
 #include "portalfix.h"
 #include "shrinewatch.h"
 #include "chasegrid.h"
+#include "breathfix.h"
+#include "lettbook.h"
+#include "gold.h"
 #include "../common/buildid.h"
 #include "../common/u9time.h"
 
@@ -215,6 +218,144 @@ static void init_install(void)
                                           (void *)h_new_derived);
 }
 
+typedef void (U9CALL *ActorCreateFn)(void *table, int index);
+static ActorCreateFn o_actorCreate;
+static unsigned g_acCalls, g_acCleared, g_acGarbage, g_acLogged, g_acSetupFixed, g_acSetupLogged;
+
+static unsigned repair_setup(uintptr_t act, char *what, size_t n)
+{
+    unsigned fixed = 0;
+    size_t len = 0;
+    int32_t charmer = (int32_t)rd32(act + 0x140), wander = (int32_t)rd32(act + 0x168),
+            reversing = (int32_t)rd32(act + 0x16C);
+    uint8_t home = *(volatile uint8_t *)(act + 0x170), sight = *(volatile uint8_t *)(act + 0x171);
+    what[0] = 0;
+    if (charmer < -1 || charmer >= (int32_t)ACTOR_COUNT) {
+        len += (size_t)snprintf(what + len, n - len, " charmer %d->-1", (int)charmer);
+        *(volatile int32_t *)(act + 0x140) = -1; fixed++;
+    }
+    if (wander < 0 || wander > 10000) {
+        len += (size_t)snprintf(what + len, n - len, " wander %d->0", (int)wander);
+        *(volatile int32_t *)(act + 0x168) = 0; fixed++;
+    }
+    if (reversing != 0 && reversing != 1) {
+        len += (size_t)snprintf(what + len, n - len, " reversing %d->0", (int)reversing);
+        *(volatile int32_t *)(act + 0x16C) = 0; fixed++;
+    }
+    if (home > 1) {
+        len += (size_t)snprintf(what + len, n - len, " go-home %u->1", (unsigned)home);
+        *(volatile uint8_t *)(act + 0x170) = 1; fixed++;
+    }
+    if (sight > 1 && len + 24 < n) {
+        snprintf(what + len, n - len, " line-of-sight %u->1", (unsigned)sight);
+        *(volatile uint8_t *)(act + 0x171) = 1; fixed++;
+    }
+    return fixed;
+}
+
+static void U9CALL h_actor_create(void *table, int index)
+{
+    uintptr_t tbl, act;
+    int32_t counter, reload;
+
+    o_actorCreate(table, index);
+    g_acCalls++;
+    if (index < 0 || index >= (int)ACTOR_COUNT || !readable4(ACTOR_TABLE)) return;
+    tbl = rd32(ACTOR_TABLE);
+    if (!tbl || !readable4(tbl + 4u * (unsigned)index)) return;
+    act = rd32(tbl + 4u * (unsigned)index);
+    if (!act || !readable4(act + 0x178)) return;
+    counter = (int32_t)rd32(act + 0x174);
+    reload = (int32_t)rd32(act + 0x178);
+    if (counter < 0 || counter > 36000 || reload < 0 || reload > 600) {
+        g_acGarbage++;
+        if (g_acLogged < 20) {
+            g_acLogged++;
+            u9log_line("F-4 (all classes): actor %d (class %08X) was created with sight counter %d and reload %d - %s;"
+                       " cleared", index, (unsigned)rd32(act), (int)counter, (int)reload,
+                       counter < 0 ? "negative, it would never look" : "it would not look for a long time");
+        }
+    }
+    *(volatile uint32_t *)(act + 0x174) = 0;
+    *(volatile uint32_t *)(act + 0x178) = 0;
+    g_acCleared++;
+    {
+        char what[160];
+        unsigned fixed = repair_setup(act, what, sizeof what);
+        if (fixed) {
+            g_acSetupFixed++;
+            if (g_acSetupLogged < 20) {
+                g_acSetupLogged++;
+                u9log_line("F-4 (all classes): actor %d (class %08X) setup fields repaired:%s", index,
+                           (unsigned)rd32(act), what);
+            }
+        }
+    }
+}
+
+static const U9PatchSpec ACREATE_SPEC_SCHED = {
+    "F4_CREATE_SCHEDULED", U9PATCH_CALLSITE, U9SYM_ACTOR_CREATE_CALL_SCHEDULED, 5, CALL_E8, 1, U9PF_EXCLUSIVE
+};
+static const U9PatchSpec ACREATE_SPEC_LOAD = {
+    "F4_CREATE_LOAD", U9PATCH_CALLSITE, U9SYM_ACTOR_CREATE_CALL_LOAD, 5, CALL_E8, 1, U9PF_EXCLUSIVE
+};
+static const U9PatchSpec ACREATE_SPEC_PACKED = {
+    "F4_CREATE_PACKED", U9PATCH_CALLSITE, U9SYM_ACTOR_CREATE_CALL_PACKED, 5, CALL_E8, 1, U9PF_EXCLUSIVE
+};
+
+static void actor_create_install(void)
+{
+    ActorCreateFn a = (ActorCreateFn)u9patch_install(&ACREATE_SPEC_SCHED, (void *)h_actor_create);
+    ActorCreateFn b = (ActorCreateFn)u9patch_install(&ACREATE_SPEC_LOAD, (void *)h_actor_create);
+    ActorCreateFn c = (ActorCreateFn)u9patch_install(&ACREATE_SPEC_PACKED, (void *)h_actor_create);
+    o_actorCreate = a ? a : b ? b : c;
+    u9log_line("F-4 (all classes): the sight counter and reload are cleared as every actor is created"
+               " (call sites: scheduled %s, load %s, packed %s)", a ? "hooked" : "REFUSED",
+               b ? "hooked" : "REFUSED", c ? "hooked" : "REFUSED");
+}
+
+static int      g_clampOn = -1;
+static DWORD    g_clampLast;
+static unsigned g_clampFixed, g_clampLogged;
+
+void u9fix_los_clamp_tick(void)
+{
+    uintptr_t tbl;
+    unsigned i;
+    DWORD now;
+    if (g_clampOn < 0) {
+        g_clampOn = u9cfg_int("fix_actor_los_clamp", 0);
+        if (g_clampOn) u9log_line("F-4 backstop: actors in combat with a sight counter or reload out of range are"
+                                  " set to 0 (fix_actor_los_clamp)");
+    }
+    if (!g_clampOn) return;
+    now = u9time_now();
+    if (now - g_clampLast < 500u) return;
+    g_clampLast = now;
+    tbl = readable4(ACTOR_TABLE) ? rd32(ACTOR_TABLE) : 0;
+    if (!tbl || !readable4(tbl + 4u * (ACTOR_COUNT - 1))) return;
+    for (i = 1; i < ACTOR_COUNT; i++) {
+        uintptr_t act = rd32(tbl + 4u * i);
+        uint32_t vt;
+        int32_t counter, reload;
+        if (!act || !readable4(act) || !readable4(act + 0x178)) continue;
+        vt = rd32(act);
+        if (vt < IMAGE_LO || vt >= IMAGE_HI) continue;
+        if ((int32_t)rd32(act + 0x104) < 0) continue;
+        counter = (int32_t)rd32(act + 0x174);
+        reload = (int32_t)rd32(act + 0x178);
+        if (counter >= 0 && counter <= 36000 && reload >= 0 && reload <= 600) continue;
+        if (g_clampLogged < 20) {
+            g_clampLogged++;
+            u9log_line("F-4 backstop: actor %u (class %08X) fighting with sight counter %d, reload %d - set to 0",
+                       i, (unsigned)vt, (int)counter, (int)reload);
+        }
+        if (counter < 0 || counter > 36000) *(volatile uint32_t *)(act + 0x174) = 0;
+        if (reload < 0 || reload > 600) *(volatile uint32_t *)(act + 0x178) = 0;
+        g_clampFixed++;
+    }
+}
+
 #define ACTOR_REBUILD_FLAG  0x2BCu
 
 typedef void (U9CALL *ActorCtorFn)(void *self, unsigned arg);
@@ -340,6 +481,474 @@ static void spell_kind_install(void)
         done += u9patch_install_bytes(specs[i], SPELLKIND_97, 4) ? 1 : 0;
     u9log_line("F-19: the spell-type test ends at 0x97 in %d of 12 places - the Ring of Fire's"
                " burning ring (0x9A) and the effects 0x98/0x99 are no longer taken for spells", done);
+}
+
+
+#define MODEL_MAX_LODS  16u
+#define MODEL_MAX_LIMBS 255u
+
+static const uint8_t MODELREC_EXPECT[8] = { 0x3B, 0xEE, 0x89, 0x6C, 0x24, 0x10, 0x75, 0x0E };
+static const U9PatchSpec MODELREC_SPEC = {
+    "F23_MODEL_RECORD", U9PATCH_STUB, U9SYM_MODEL_RECORD_TEST,
+    8, MODELREC_EXPECT, 8, U9PF_EXCLUSIVE
+};
+static uint8_t          *g_modelStub;
+static volatile LONG     g_modelRefused;
+static volatile uint32_t g_modelLastLimbs, g_modelLastLods;
+
+static void model_refused(uint32_t rec)
+{
+    const uint32_t *r = (const uint32_t *)(uintptr_t)rec;
+    g_modelLastLimbs = r[0];
+    g_modelLastLods  = r[1];
+    InterlockedIncrement(&g_modelRefused);
+}
+
+static uint8_t *stub_alloc(void);
+static int jump_to_stub(const U9PatchSpec *spec, uintptr_t site, uint8_t *st);
+
+static void model_guard_install(void)
+{
+    uintptr_t site = u9sym(U9SYM_MODEL_RECORD_TEST);
+    uintptr_t ok   = u9sym(U9SYM_MODEL_RECORD_OK);
+    uintptr_t none = u9sym(U9SYM_MODEL_RECORD_NONE);
+    uint8_t *st, *p, *jzNone, *jaBad1, *jaBad2, *bad, *fail;
+
+    if (!site || !ok || !none || !(st = stub_alloc())) return;
+    p = st;
+    *p++ = 0x89; *p++ = 0x6C; *p++ = 0x24; *p++ = 0x10;
+    *p++ = 0x85; *p++ = 0xED;
+    *p++ = 0x74; jzNone = p++;
+    *p++ = 0x83; *p++ = 0x7D; *p++ = 0x04; *p++ = (uint8_t)MODEL_MAX_LODS;
+    *p++ = 0x77; jaBad1 = p++;
+    *p++ = 0x81; *p++ = 0x7D; *p++ = 0x00;
+    *(uint32_t *)p = MODEL_MAX_LIMBS; p += 4;
+    *p++ = 0x77; jaBad2 = p++;
+    *p++ = 0xE9;
+    *(int32_t *)p = (int32_t)(ok - ((uintptr_t)p + 4)); p += 4;
+    bad = p;
+    *p++ = 0x60;
+    *p++ = 0x55;
+    *p++ = 0xE8;
+    *(int32_t *)p = (int32_t)((uintptr_t)&model_refused - ((uintptr_t)p + 4)); p += 4;
+    *p++ = 0x83; *p++ = 0xC4; *p++ = 0x04;
+    *p++ = 0x61;
+    fail = p;
+    *p++ = 0xE9;
+    *(int32_t *)p = (int32_t)(none - ((uintptr_t)p + 4)); p += 4;
+
+    *jzNone = (uint8_t)(fail - (jzNone + 1));
+    *jaBad1 = (uint8_t)(bad - (jaBad1 + 1));
+    *jaBad2 = (uint8_t)(bad - (jaBad2 + 1));
+    FlushInstructionCache(GetCurrentProcess(), st, (SIZE_T)(p - st));
+
+    if (!jump_to_stub(&MODELREC_SPEC, site, st)) { VirtualFree(st, 0, MEM_RELEASE); return; }
+    g_modelStub = st;
+    u9log_line("F-23: models the game cannot read (more than %u LODs or %u limbs) are refused"
+               " instead of built", MODEL_MAX_LODS, MODEL_MAX_LIMBS);
+}
+
+
+static const uint8_t SOUNDSRC_EXPECT[5] = { 0xE8, 0xAC, 0x83, 0xF8, 0xFF };
+static const U9PatchSpec SOUNDSRC_SPEC = {
+    "F24_SOUNDSRC_RESOLVE", U9PATCH_STUB, U9SYM_SOUNDSRC_RESOLVE_CALL,
+    5, SOUNDSRC_EXPECT, 5, U9PF_EXCLUSIVE
+};
+static uint8_t       *g_soundSrcStub;
+static volatile LONG  g_soundSrcNoSlot;
+
+static uint8_t *emit_rel32(uint8_t *p, uint8_t op, uintptr_t target)
+{
+    *p++ = op;
+    *(int32_t *)p = (int32_t)(target - ((uintptr_t)p + 4));
+    return p + 4;
+}
+
+static void sound_source_guard_install(void)
+{
+    uintptr_t site     = u9sym(U9SYM_SOUNDSRC_RESOLVE_CALL);
+    uintptr_t resolved = u9sym(U9SYM_SOUNDSRC_RESOLVED);
+    uintptr_t worldPos = u9sym(U9SYM_SOUNDSRC_WORLD_POS);
+    uintptr_t slotFn   = u9sym(U9SYM_FASTREF_SLOT_OR_REACQUIRE);
+    uintptr_t resolve  = u9sym(U9SYM_FASTREF_RESOLVE_RECORD);
+    uint8_t *st, *p, *jz;
+
+    if (!site || !resolved || !worldPos || !slotFn || !resolve || !(st = stub_alloc())) return;
+    p = st;
+    *p++ = 0x51;
+    *p++ = 0x51;
+    *p++ = 0xA1; *(uint32_t *)p = 0x00AD127Cu; p += 4;
+    *p++ = 0x8B; *p++ = 0x48; *p++ = 0x64;
+    *p++ = 0x8B; *p++ = 0x89;
+    *(uint32_t *)p = 0xD0u; p += 4;
+    p = emit_rel32(p, 0xE8, slotFn);
+    *p++ = 0x59;
+    *p++ = 0x85; *p++ = 0xC0;
+    *p++ = 0x74; jz = p++;
+    p = emit_rel32(p, 0xE8, resolve);
+    p = emit_rel32(p, 0xE9, resolved);
+    *jz = (uint8_t)(p - (jz + 1));
+    *p++ = 0xF0; *p++ = 0xFF; *p++ = 0x05;
+    *(uint32_t *)p = (uint32_t)(uintptr_t)&g_soundSrcNoSlot; p += 4;
+    p = emit_rel32(p, 0xE9, worldPos);
+    FlushInstructionCache(GetCurrentProcess(), st, (SIZE_T)(p - st));
+
+    if (!jump_to_stub(&SOUNDSRC_SPEC, site, st)) { VirtualFree(st, 0, MEM_RELEASE); return; }
+    g_soundSrcStub = st;
+    u9log_line("F-24: a sound source whose object has lost its fast-area slot is measured from"
+               " the object's world position instead of crashing");
+}
+
+
+static const uint8_t LINEHIT_EXPECT[6] = { 0x8B, 0x44, 0x24, 0x74, 0xA8, 0x40 };
+static const U9PatchSpec LINEHIT_SPEC = {
+    "F25_LINEHIT_BEST", U9PATCH_STUB, U9SYM_LINEHIT_SEARCH_START,
+    6, LINEHIT_EXPECT, 6, U9PF_EXCLUSIVE
+};
+
+static const uint8_t LINEOBJ_EXPECT[5] = { 0x8B, 0x68, 0x14, 0xEB, 0x02 };
+static const U9PatchSpec LINEOBJ_SPEC = {
+    "F25_LINEHIT_OBJECT", U9PATCH_STUB, U9SYM_LINEHIT_OBJECT_READ,
+    5, LINEOBJ_EXPECT, 5, U9PF_EXCLUSIVE
+};
+static volatile LONG g_lineObjNone;
+static unsigned      g_lineObjLogged;
+#define LINEOBJ_LOG_MAX   24u
+#define LINEOBJ_WALK_MAX  200000u
+
+static int line_obj_ok(uintptr_t obj, uintptr_t *itemOut)
+{
+    uintptr_t item;
+    *itemOut = 0;
+    if (obj >= IMAGE_LO && obj < IMAGE_HI) return 0;
+    if (!readable4(obj + 0x14)) return 0;
+    item = rd32(obj + 0x14);
+    *itemOut = item;
+    if (item == 0) return 1;
+    if (item == 0xFFFFFFFFu || !readable4(item + 0x14)) return 0;
+    return 1;
+}
+
+static void line_obj_shape(const char *tag, uintptr_t sh)
+{
+    uintptr_t rec = readable4(sh) ? rd32(sh) : 0;
+    unsigned type = (rec && rec != 0xFFFFFFFFu && readable4(rec + 0x08))
+                    ? (unsigned)*(const volatile uint16_t *)(rec + 0x0A) : 0xFFFFu;
+    if (!readable4(sh + 0x70)) { u9log_line("LINEHIT   %s shape %08X unreadable", tag, (unsigned)sh); return; }
+    u9log_line("LINEHIT   %s shape %08X: record %08X type %u, flags+4C %08X, object+50 %08X, mesh+54 %08X,"
+               " element+68 %08X, head+70 %08X, box x %d..%d y %d..%d", tag, (unsigned)sh, (unsigned)rec,
+               type, (unsigned)rd32(sh + 0x4C), (unsigned)rd32(sh + 0x50), (unsigned)rd32(sh + 0x54),
+               (unsigned)rd32(sh + 0x68), (unsigned)rd32(sh + 0x70),
+               (int)rd32(sh + 0x04) >> 1, (int)rd32(sh + 0x24) >> 1,
+               (int)rd32(sh + 0x14) >> 1, (int)rd32(sh + 0x34) >> 1);
+}
+
+static uintptr_t __cdecl line_obj_check(uintptr_t obj, uintptr_t probe)
+{
+    uintptr_t item, node, head, sh;
+    unsigned n = 0, total = 0, found = 0;
+    int ax, ay, az;
+
+    if (line_obj_ok(obj, &item)) return item;
+    InterlockedIncrement(&g_lineObjNone);
+    if (g_lineObjLogged >= LINEOBJ_LOG_MAX) return 0;
+    g_lineObjLogged++;
+
+    if (!u9avatar_position(&ax, &ay, &az)) ax = ay = az = 0;
+    u9log_line("LINEHIT stale #%u: hit object %08X (%s), item %08X; probe shape %08X; Avatar at %d,%d,%d",
+               g_lineObjLogged, (unsigned)obj,
+               (obj >= IMAGE_LO && obj < IMAGE_HI) ? "inside u9.exe's image" :
+               readable4(obj) ? "readable" : "unreadable", (unsigned)item, (unsigned)probe, ax, ay, az);
+    if (readable4(obj))
+        u9log_line("LINEHIT   object's words +0 %08X +4 %08X +8 %08X +14 %08X", (unsigned)rd32(obj),
+                   (unsigned)(readable4(obj + 4) ? rd32(obj + 4) : 0),
+                   (unsigned)(readable4(obj + 8) ? rd32(obj + 8) : 0),
+                   (unsigned)(readable4(obj + 0x14) ? rd32(obj + 0x14) : 0));
+    if (!readable4(probe + 0x70)) return 0;
+    line_obj_shape("probe", probe);
+
+    head = probe + 0x04;
+    while (n < LINEOBJ_WALK_MAX && readable4(head + 0x0C) && rd32(head + 0x0C)) { head = rd32(head + 0x0C); n++; }
+    for (node = head, n = 0; node && n < LINEOBJ_WALK_MAX && readable4(node + 0x0C); node = rd32(node + 0x08), n++) {
+        if (rd32(node) & 1u) continue;
+        total++;
+        sh = rd32(node + 0x04);
+        if (!readable4(sh + 0x50)) {
+            if (found < 8) {
+                found++;
+                u9log_line("LINEHIT   node %08X (value %d) names unreadable shape %08X",
+                           (unsigned)node, (int)rd32(node) >> 1, (unsigned)sh);
+            }
+            continue;
+        }
+        if (rd32(sh + 0x50) == obj && found < 8) { found++; line_obj_shape("stale", sh); }
+    }
+    u9log_line("LINEHIT   X list: %u shapes walked from head %08X%s; %u reported", total, (unsigned)head,
+               n >= LINEOBJ_WALK_MAX ? " (stopped at the cap)" : "", found);
+    return 0;
+}
+
+static void line_object_install(void)
+{
+    uintptr_t site = u9sym(U9SYM_LINEHIT_OBJECT_READ);
+    uintptr_t done = u9sym(U9SYM_LINEHIT_OBJECT_DONE);
+    uint8_t *st, *p;
+
+    if (!site || !done || !(st = stub_alloc())) return;
+    p = st;
+    *p++ = 0x9C;
+    *p++ = 0x60;
+    *p++ = 0x56;
+    *p++ = 0x50;
+    p = emit_rel32(p, 0xE8, (uintptr_t)&line_obj_check);
+    *p++ = 0x83; *p++ = 0xC4; *p++ = 0x08;
+    *p++ = 0x89; *p++ = 0x44; *p++ = 0x24; *p++ = 0x08;
+    *p++ = 0x61;
+    *p++ = 0x9D;
+    p = emit_rel32(p, 0xE9, done);
+    FlushInstructionCache(GetCurrentProcess(), st, (SIZE_T)(p - st));
+
+    if (!jump_to_stub(&LINEOBJ_SPEC, site, st)) { VirtualFree(st, 0, MEM_RELEASE); return; }
+    u9log_line("F-25: a line test's hit whose object is not a live-looking game object is taken as"
+               " no object, and the shapes still naming it are logged (LINEHIT)");
+}
+
+static const uint8_t CAMOBJ_EXPECT[5] = { 0x8B, 0x40, 0x14, 0xEB, 0x02 };
+static const U9PatchSpec CAMOBJ_SPEC = {
+    "F25_CAMERA_HIT_OBJECT", U9PATCH_STUB, U9SYM_CAMHIT_OBJECT_READ,
+    5, CAMOBJ_EXPECT, 5, U9PF_EXCLUSIVE
+};
+static volatile LONG g_camObjNone;
+static unsigned      g_camObjLogged;
+
+static uintptr_t __cdecl cam_obj_check(uintptr_t obj)
+{
+    uintptr_t item;
+    int ax, ay, az;
+    if (line_obj_ok(obj, &item)) return item;
+    InterlockedIncrement(&g_camObjNone);
+    if (g_camObjLogged < 8) {
+        g_camObjLogged++;
+        if (!u9avatar_position(&ax, &ay, &az)) ax = ay = az = 0;
+        u9log_line("LINEHIT camera #%u: hit object %08X (%s), item %08X - taken as none; Avatar at %d,%d,%d",
+                   g_camObjLogged, (unsigned)obj,
+                   (obj >= IMAGE_LO && obj < IMAGE_HI) ? "inside u9.exe's image" :
+                   readable4(obj) ? "readable" : "unreadable", (unsigned)item, ax, ay, az);
+    }
+    return 0;
+}
+
+static void cam_object_install(void)
+{
+    uintptr_t site = u9sym(U9SYM_CAMHIT_OBJECT_READ);
+    uintptr_t done = u9sym(U9SYM_CAMHIT_OBJECT_DONE);
+    uint8_t *st, *p;
+
+    if (!site || !done || !(st = stub_alloc())) return;
+    p = st;
+    *p++ = 0x9C;
+    *p++ = 0x60;
+    *p++ = 0x50;
+    p = emit_rel32(p, 0xE8, (uintptr_t)&cam_obj_check);
+    *p++ = 0x83; *p++ = 0xC4; *p++ = 0x04;
+    *p++ = 0x89; *p++ = 0x44; *p++ = 0x24; *p++ = 0x1C;
+    *p++ = 0x61;
+    *p++ = 0x9D;
+    p = emit_rel32(p, 0xE9, done);
+    FlushInstructionCache(GetCurrentProcess(), st, (SIZE_T)(p - st));
+
+    if (!jump_to_stub(&CAMOBJ_SPEC, site, st)) { VirtualFree(st, 0, MEM_RELEASE); return; }
+    u9log_line("F-25: the camera's collision hit is checked the same way before its object is read");
+}
+
+static volatile uintptr_t g_lineProbe;
+static unsigned g_scanFrames, g_scanBadLogged, g_scanRuns, g_scanBadTotal;
+#define SCAN_EVERY      30u
+#define SCAN_LOG_MAX    40u
+
+static void scan_list(uintptr_t start, const char *axis, int ax, int ay, int az)
+{
+    uintptr_t node = start, sh, obj, item;
+    unsigned n = 0, walked = 0, bad = 0;
+    const char *why;
+
+    while (n < LINEOBJ_WALK_MAX && readable4(node + 0x0C) && rd32(node + 0x0C)) { node = rd32(node + 0x0C); n++; }
+    for (n = 0; node && n < LINEOBJ_WALK_MAX && readable4(node + 0x0C); node = rd32(node + 0x08), n++) {
+        walked++;
+        sh = rd32(node + 0x04);
+        why = NULL;
+        if (!readable4(sh + 0x70)) why = "shape unreadable";
+        else if (node != sh + 0x04 && node != sh + 0x14 && node != sh + 0x24 && node != sh + 0x34)
+            why = "shape does not own this node";
+        else if ((obj = rd32(sh + 0x50)) != 0 && !line_obj_ok(obj, &item))
+            why = "shape's object is dead";
+        if (!why) continue;
+        bad++;
+        g_scanBadTotal++;
+        if (g_scanBadLogged >= SCAN_LOG_MAX) continue;
+        g_scanBadLogged++;
+        u9log_line("LINEHIT scan %s: node %08X value %d%s - %s; Avatar at %d,%d,%d", axis, (unsigned)node,
+                   (int)rd32(node) >> 1, (rd32(node) & 1u) ? " (max)" : " (min)", why, ax, ay, az);
+        if (readable4(sh + 0x70)) line_obj_shape("bad", sh);
+        else u9log_line("LINEHIT   bad shape %08X unreadable", (unsigned)sh);
+    }
+    if (bad && g_scanBadLogged <= SCAN_LOG_MAX)
+        u9log_line("LINEHIT scan %s: %u bad of %u nodes walked", axis, bad, walked);
+}
+
+void u9linehit_tick(void)
+{
+    uintptr_t probe = g_lineProbe;
+    int ax, ay, az;
+    static int on = -1;
+    if (on < 0) on = u9cfg_int("diag_linehit_scan", 0);
+    if (!on || ++g_scanFrames < SCAN_EVERY) return;
+    g_scanFrames = 0;
+    if (!probe || !readable4(probe + 0x70) || g_scanBadLogged >= SCAN_LOG_MAX) return;
+    g_scanRuns++;
+    if (!u9avatar_position(&ax, &ay, &az)) ax = ay = az = 0;
+    scan_list(probe + 0x04, "X", ax, ay, az);
+    scan_list(probe + 0x14, "Y", ax, ay, az);
+}
+
+static const uint8_t LIMB_EXPECT[9] = { 0x8B, 0x80, 0xA8, 0x00, 0x00, 0x00, 0x83, 0xC0, 0x30 };
+static const U9PatchSpec LIMB_SPEC = {
+    "F26_LIMB_FIRST", U9PATCH_STUB, U9SYM_LIMB_FIRST_READ,
+    9, LIMB_EXPECT, 9, U9PF_EXCLUSIVE
+};
+static volatile LONG g_limbNoElement, g_limbNoA8;
+static volatile LONG g_limbType;
+
+static void limb_first_install(void)
+{
+    uintptr_t site = u9sym(U9SYM_LIMB_FIRST_READ);
+    uintptr_t done = u9sym(U9SYM_LIMB_FIRST_DONE);
+    uintptr_t none = u9sym(U9SYM_LIMB_NO_FIRST);
+    uint8_t *st, *p, *jzElem, *jzA8, *noA8, *common;
+
+    if (!site || !done || !none || !(st = stub_alloc())) return;
+    p = st;
+    *p++ = 0x85; *p++ = 0xC0;
+    *p++ = 0x74; jzElem = p++;
+    memcpy(p, LIMB_EXPECT, 6); p += 6;
+    *p++ = 0x85; *p++ = 0xC0;
+    *p++ = 0x74; jzA8 = p++;
+    memcpy(p, LIMB_EXPECT + 6, 3); p += 3;
+    p = emit_rel32(p, 0xE9, done);
+    *jzElem = (uint8_t)(p - (jzElem + 1));
+    *p++ = 0xF0; *p++ = 0xFF; *p++ = 0x05;
+    *(uint32_t *)p = (uint32_t)(uintptr_t)&g_limbNoElement; p += 4;
+    *p++ = 0xEB; common = p++;
+    noA8 = p;
+    *jzA8 = (uint8_t)(noA8 - (jzA8 + 1));
+    *p++ = 0xF0; *p++ = 0xFF; *p++ = 0x05;
+    *(uint32_t *)p = (uint32_t)(uintptr_t)&g_limbNoA8; p += 4;
+    *common = (uint8_t)(p - (common + 1));
+    *p++ = 0x8B; *p++ = 0x03;
+    *p++ = 0x0F; *p++ = 0xB7; *p++ = 0x40; *p++ = 0x0A;
+    *p++ = 0xA3;
+    *(uint32_t *)p = (uint32_t)(uintptr_t)&g_limbType; p += 4;
+    *p++ = 0xC7; *p++ = 0x43; *p++ = 0x68;
+    *(uint32_t *)p = 0; p += 4;
+    p = emit_rel32(p, 0xE9, none);
+    FlushInstructionCache(GetCurrentProcess(), st, (SIZE_T)(p - st));
+
+    if (!jump_to_stub(&LIMB_SPEC, site, st)) { VirtualFree(st, 0, MEM_RELEASE); return; }
+    u9log_line("F-26: a cylinder's limb build with no usable first limb builds none instead of crashing");
+}
+
+static void line_hit_install(void)
+{
+    uintptr_t site = u9sym(U9SYM_LINEHIT_SEARCH_START);
+    uintptr_t jz   = u9sym(U9SYM_LINEHIT_SEARCH_JZ);
+    uint8_t *st, *p;
+
+    line_object_install();
+    cam_object_install();
+    limb_first_install();
+    if (!site || !jz || !(st = stub_alloc())) return;
+    p = st;
+    *p++ = 0x89; *p++ = 0x35;
+    *(uint32_t *)p = (uint32_t)(uintptr_t)&g_lineProbe; p += 4;
+    *p++ = 0xC7; *p++ = 0x44; *p++ = 0x24; *p++ = 0x18;
+    *(uint32_t *)p = 0; p += 4;
+    memcpy(p, LINEHIT_EXPECT, 6); p += 6;
+    p = emit_rel32(p, 0xE9, jz);
+    FlushInstructionCache(GetCurrentProcess(), st, (SIZE_T)(p - st));
+
+    if (!jump_to_stub(&LINEHIT_SPEC, site, st)) { VirtualFree(st, 0, MEM_RELEASE); return; }
+    u9log_line("F-25: a collision line test that finds no nearer hit starts its best hit at"
+               " nothing instead of a leftover float");
+}
+
+
+#define TYPE_TABLE_PTR    0x00AE7C7Cu
+#define TYPE_TABLE_COUNT  0x00AE7C74u
+#define HALBERD_TYPE      3463u
+#define HALBERD_MASS      100u
+
+static const U9PatchSpec TYPELOAD_SPEC = {
+    "HALBERD_TYPE_LOAD", U9PATCH_CALLSITE, U9SYM_TYPE_TABLE_LOAD_CALL,
+    5, CALL_E8, 1, U9PF_EXCLUSIVE
+};
+typedef void (*TypeLoadFn)(void);
+static TypeLoadFn o_typeLoad;
+
+static void halberd_apply(const char *when)
+{
+    uint8_t *table = (uint8_t *)(uintptr_t)rd32(TYPE_TABLE_PTR);
+    uint32_t count = rd32(TYPE_TABLE_COUNT);
+    uint8_t *mass;
+
+    if (!table || count <= HALBERD_TYPE) return;
+    mass = table + HALBERD_TYPE * 16u + 0x0A;
+    if (*mass == 0xFF) {
+        *mass = (uint8_t)HALBERD_MASS;
+        u9log_line("HALBERD: type %u mass 255 -> %u (%s) - it can be picked up, carried and wielded",
+                   HALBERD_TYPE, HALBERD_MASS, when);
+    } else {
+        u9log_line("HALBERD: type %u mass is %u, not 255 (%s) - left as it is",
+                   HALBERD_TYPE, (unsigned)*mass, when);
+    }
+}
+
+static void type_load_hook(void)
+{
+    o_typeLoad();
+    halberd_apply("after types.dat loaded");
+}
+
+#define HALBERD_SOUND_TEMPLATE 178u
+
+static const uint8_t SOUNDASSOC_EXPECT[6] = { 0x83, 0xEC, 0x10, 0x56, 0x8B, 0xF1 };
+static const U9PatchSpec SOUNDASSOC_SPEC = {
+    "HALBERD_SOUND", U9PATCH_INLINE, U9SYM_SOUND_ASSOC_LOOKUP,
+    6, SOUNDASSOC_EXPECT, 6, U9PF_EXCLUSIVE
+};
+typedef int (U9CALL *SoundAssocFn)(void *self, uint32_t type, uint32_t *tmpl);
+static SoundAssocFn o_soundAssoc;
+static volatile LONG g_halberdSounds;
+
+static int U9CALL h_soundAssoc(void *self, uint32_t type, uint32_t *tmpl)
+{
+    int r = o_soundAssoc(self, type, tmpl);
+    if (r != 0 && (type & 0xFFFFu) == HALBERD_TYPE && tmpl) {
+        *tmpl = HALBERD_SOUND_TEMPLATE;
+        InterlockedIncrement(&g_halberdSounds);
+        return 0;
+    }
+    return r;
+}
+
+static void halberd_install(void)
+{
+    o_typeLoad = (TypeLoadFn)u9patch_install(&TYPELOAD_SPEC, (void *)type_load_hook);
+    if (!o_typeLoad) { u9log_line("HALBERD: the type-table load call was refused - not restored"); return; }
+    halberd_apply("at install");
+
+    o_soundAssoc = (SoundAssocFn)u9patch_install(&SOUNDASSOC_SPEC, (void *)h_soundAssoc);
+    u9log_line("HALBERD: sounds %s - the battleaxe's (template %u)",
+               o_soundAssoc ? "linked" : "REFUSED, it stays silent", HALBERD_SOUND_TEMPLATE);
 }
 
 
@@ -733,9 +1342,10 @@ static uint8_t *emit_observe(uint8_t *p, void (*fn)(uint32_t *))
 
 static int jump_to_stub(const U9PatchSpec *spec, uintptr_t site, uint8_t *st)
 {
-    uint8_t jmp[8];
+    uint8_t jmp[16];
     unsigned i;
 
+    if (spec->length < 5 || spec->length > sizeof jmp) return 0;
     jmp[0] = 0xE9;
     *(int32_t *)(jmp + 1) = (int32_t)((uintptr_t)st - (site + 5));
     for (i = 5; i < spec->length; i++) jmp[i] = 0x90;
@@ -2021,6 +2631,8 @@ static void f5_free_stubs(void)
     if (g_searchStubB) { VirtualFree(g_searchStubB, 0, MEM_RELEASE); g_searchStubB = 0; }
     if (g_rangeStub) { VirtualFree(g_rangeStub, 0, MEM_RELEASE); g_rangeStub = 0; }
     if (g_recastStub) { VirtualFree(g_recastStub, 0, MEM_RELEASE); g_recastStub = 0; }
+    if (g_modelStub) { VirtualFree(g_modelStub, 0, MEM_RELEASE); g_modelStub = 0; }
+    if (g_soundSrcStub) { VirtualFree(g_soundSrcStub, 0, MEM_RELEASE); g_soundSrcStub = 0; }
 }
 
 void u9fix_install(void)
@@ -2037,7 +2649,7 @@ void u9fix_install(void)
 
     u9clock_install();
 
-    if (u9cfg_int("fix_actor_init", 1)) init_install();
+    if (u9cfg_int("fix_actor_init", 1)) { init_install(); actor_create_install(); }
     else u9log_line("F-4 transient clear disabled by config");
 
     if (u9cfg_int("fix_f5", 1)) {
@@ -2116,6 +2728,15 @@ void u9fix_install(void)
 
     if (u9cfg_int("fix_combat_run", 1)) combat_run_install();
 
+    if (u9cfg_int("fix_deep_breath", 1)) u9breathfix_install();
+    else u9log_line("I-20 deep breath fix off by config - deep water drains a breath a frame, as stock");
+
+    if (u9cfg_int("fix_breath_zones", 1)) u9breathzones_install();
+    else u9log_line("I-20 breath zones fix off by config - the last zone crossed decides, as stock");
+
+    if (u9cfg_int("fix_lett_book", 1)) u9lettbook_install();
+    else u9log_line("LETT BOOK fix off by config - the book teaches only when read on the ground, as stock");
+
     if (u9cfg_int("fix_rain_splash", 1)) rain_splash_install();
     else u9log_line("I-19 rain splash fix off by config - rain that falls into a room still"
                     " splashes on the ground under it, as stock");
@@ -2157,6 +2778,17 @@ void u9fix_install(void)
     if (u9cfg_int("fix_spell_kind", 1)) spell_kind_install();
     else u9log_line("F-19 spell-type bound off by config - effects 0x98..0x9A pass as spells, as stock");
 
+    if (u9cfg_int("fix_bad_models", 1)) model_guard_install();
+    else u9log_line("F-23 model guard off by config - a model the game cannot read is built anyway, as stock");
+
+    if (u9cfg_int("fix_sound_slot", 1)) sound_source_guard_install();
+    else u9log_line("F-24 sound source guard off by config - a source with no fast-area slot crashes, as stock");
+
+    if (u9cfg_int("fix_line_hit", 1)) line_hit_install();
+    else u9log_line("F-25 line-test fix off by config - a test with no hit can read a float as a pointer, as stock");
+
+    if (u9cfg_int("restore_halberd", 1)) halberd_install();
+
     laa_report();
     if (u9cfg_int("fix_blit_unsigned", 1)) blit_clamp_install();
     else u9log_line("LAA blit clamp off by config - signed, as stock");
@@ -2188,6 +2820,8 @@ void u9fix_report(void)
     u9portal_report();
     u9shrine_report();
     u9chase_report();
+    u9breathzones_report();
+    u9lettbook_report();
     cost_report(&g_init);
     cost_report(&g_f3);
 
@@ -2216,6 +2850,38 @@ void u9fix_report(void)
             u9log_line("  the sanitiser never acted, which is what a working"
                        " fix above it looks like");
     }
+    if (g_modelRefused)
+        u9log_line("  F-23: %u model builds refused - records the game cannot read (the last:"
+                   " limbs %u, LODs %u); each object was left without a model instead of crashing",
+                   (unsigned)g_modelRefused, (unsigned)g_modelLastLimbs, (unsigned)g_modelLastLods);
+    else if (g_modelStub)
+        u9log_line("  F-23 model guard never fired - no unreadable model was asked for");
+    if (o_soundAssoc)
+        u9log_line("  HALBERD: given the battleaxe's sounds %u times", (unsigned)g_halberdSounds);
+    if (g_soundSrcNoSlot)
+        u9log_line("  F-24: %u sound-source measurements found the object without a fast-area slot"
+                   " and used its world position instead of crashing", (unsigned)g_soundSrcNoSlot);
+    else if (g_soundSrcStub)
+        u9log_line("  F-24 sound source guard never fired - every source's object resolved");
+    if (g_acCalls)
+        u9log_line("  F-4 (all classes): %u actors created, %u cleared, %u of them arrived with a sight counter or"
+                   " reload out of range; %u had other setup fields repaired (charmer, flags, counts)",
+                   g_acCalls, g_acCleared, g_acGarbage, g_acSetupFixed);
+    if (g_clampFixed)
+        u9log_line("  F-4 backstop: %u actors in combat had a sight counter or reload out of range, set to 0",
+                   g_clampFixed);
+    if (g_lineObjNone)
+        u9log_line("  F-25: %u line-test hits named a dead object and were taken as no object instead of"
+                   " crashing (details: LINEHIT lines, the first %u)", (unsigned)g_lineObjNone, LINEOBJ_LOG_MAX);
+    if (g_limbNoElement || g_limbNoA8)
+        u9log_line("  F-26: %u limb builds found no first limb and %u found one without +0xA8; both built no"
+                   " limbs instead of crashing (last object type %u)",
+                   (unsigned)g_limbNoElement, (unsigned)g_limbNoA8, (unsigned)g_limbType);
+    if (g_camObjNone)
+        u9log_line("  F-25: %u camera hits named a dead object and were taken as none", (unsigned)g_camObjNone);
+    if (g_scanRuns)
+        u9log_line("  F-25: broad-phase scan ran %u times, %u bad nodes seen (LINEHIT scan lines)",
+                   g_scanRuns, g_scanBadTotal);
     if (g_f5Fired)
         u9log_line("  F-5 guard fired %u times - each one is a spell tick"
                    " abandoned, not a spell that worked", (unsigned)g_f5Fired);

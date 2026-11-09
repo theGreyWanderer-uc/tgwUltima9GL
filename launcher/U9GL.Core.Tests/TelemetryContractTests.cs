@@ -93,7 +93,7 @@ public sealed class TelemetryContractTests
             Assert.AreSame(schema, TelemetrySchema.Find(group.Name));
         }
         Assert.HasCount(Fixtures.Groups.Count, TelemetrySchema.Groups);
-        Assert.AreEqual(0x3FFFEu, TelemetrySchema.AllRequestBits);
+        Assert.AreEqual(0x7FFFEu, TelemetrySchema.AllRequestBits);
         Assert.AreEqual(1000, TelemetrySchema.Pacing.Fields[0].Scale);
         Assert.AreEqual(TelemetryFieldKind.Signed, TelemetrySchema.World.Fields[TelemetrySchema.World.IndexOf("avatarX")].Kind);
         Assert.HasCount(3, TelemetrySchema.Renderer.Fields[0].Names!);

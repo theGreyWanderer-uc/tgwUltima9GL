@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LcarsPanel } from "./components/ui/lcars/lcars-geometry";
 import { filterLogEvents, parseLogPage, type DashboardLogEvent, type DashboardLogSummary } from "./u9gl-log";
 import { apiUrl } from "./u9gl-api";
+import { band } from "./u9gl-band";
 
 const kept = 3000;
 const withoutTag = (e: DashboardLogEvent) => e.tag !== "-" && e.text.startsWith(e.tag + " ") ? e.text.slice(e.tag.length).trimStart() : e.text;
@@ -44,7 +45,7 @@ export function U9glEvents() {
 
   return (
     <>
-      <LcarsPanel id="events-source" title="Game log" headingLevel="h3" className="u9gl-readouts">
+      <LcarsPanel band={band("events", 0)} id="events-source" title="Game log" headingLevel="h3" className="u9gl-readouts">
         <p className="lcars-copy">
           {summary?.runPid ? `Run PID ${summary.runPid}${summary.runVersion ? ` · ${summary.runVersion}` : ""} · ` : ""}
           {summary ? `${summary.faults} faults · ${summary.warnings} warnings this run` : "Reading the game log..."}

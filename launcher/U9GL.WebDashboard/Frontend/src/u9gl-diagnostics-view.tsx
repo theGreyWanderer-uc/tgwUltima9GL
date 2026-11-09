@@ -17,17 +17,20 @@ import { dashboardFieldText, dashboardScaled } from "./u9gl-field-format";
 import { useDashboardAppearance } from "./u9gl-dashboard-preferences";
 import { U9glEvents } from "./u9gl-events";
 import { U9glPageGuard } from "./u9gl-page-guard";
+import { U9glPlayerPage } from "./u9gl-player";
+import { band } from "./u9gl-band";
 
-type DashboardPage = "overview" | SectionPage | "history" | "events" | "metrics";
+type DashboardPage = "overview" | "player" | SectionPage | "history" | "events" | "metrics";
 const dashboardPages: readonly { id: DashboardPage; title: string; code: string }[] = [
   { id: "overview", title: "Overview", code: "01" },
-  { id: "rendering", title: "Rendering", code: "02" },
-  { id: "memory", title: "Memory", code: "03" },
-  { id: "textures", title: "Textures", code: "04" },
-  { id: "world", title: "World", code: "05" },
-  { id: "history", title: "History", code: "06" },
-  { id: "events", title: "Events", code: "07" },
-  { id: "metrics", title: "Exact values", code: "08" },
+  { id: "player", title: "Player", code: "02" },
+  { id: "rendering", title: "Rendering", code: "03" },
+  { id: "memory", title: "Memory", code: "04" },
+  { id: "textures", title: "Textures", code: "05" },
+  { id: "world", title: "World", code: "06" },
+  { id: "history", title: "History", code: "07" },
+  { id: "events", title: "Events", code: "08" },
+  { id: "metrics", title: "Exact values", code: "09" },
 ];
 const legacyPages: Record<string, DashboardPage> = { "#general": "overview", "#objects": "world" };
 const sectionPageIds: readonly string[] = ["rendering", "memory", "textures", "world"];
@@ -58,6 +61,8 @@ const historyCharts = {
   gpuAo: { label: "GPU ambient occlusion, sampled (ms)", key: "gpu.aoUs", scale: 1e-3, unit: "ms", collected: true },
   gpuSun: { label: "GPU sun shadows, sampled (ms)", key: "gpu.sunShadowsUs", scale: 1e-3, unit: "ms", collected: true },
   gpuPools: { label: "GPU light-pool shadows, sampled (ms)", key: "gpu.poolShadowsUs", scale: 1e-3, unit: "ms", collected: true },
+  health: { label: "Avatar hit points", key: "player.health", scale: 1, unit: "hp", collected: true },
+  mana: { label: "Avatar mana", key: "player.mana", scale: 1, unit: "", collected: true },
 } as const;
 type HistoryChart = keyof typeof historyCharts;
 const isHistoryChart = (value: string): value is HistoryChart => value in historyCharts;
@@ -128,6 +133,9 @@ export function U9glDiagnosticsView() {
         ...dashboardPages.map(item => ({ href: "#" + item.id, label: item.title, code: item.code, active: page === item.id })),
       ]} />}>
         <main className="u9gl-dashboard" id="dashboard-main" tabIndex={-1} data-dashboard-page={page}>
+          {
+}
+          {page === "overview" && <>
           <section className="u9gl-controls" aria-label="Dashboard appearance">
             <label>Theme<select value={theme} onChange={e => { if (isLcarsTheme(e.target.value)) updateAppearance({ theme: e.target.value }); }}>{lcarsThemeOptions.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
             <label>Density<select value={density} onChange={e => updateAppearance({ density: e.target.value === "compact" ? "compact" : "comfortable" })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
@@ -136,12 +144,14 @@ export function U9glDiagnosticsView() {
           <LcarsFeedStatus label="Game telemetry" state={feed} ageMs={current ? current.ageMs + elapsed : null}
             retained={current !== null && feed !== "live"} detail={transportDetail || (feed === "reconnecting" ? "No recent launcher update; retaining readings." : view?.detail ?? "Connecting to the launcher")}
             {...(current ? { sessionLabel: `PID ${current.identity.pid} · ${current.identity.sessionId.slice(0, 8)} · ${current.identity.producerKind}` } : {})} />
+          </>}
           <section className="u9gl-page" aria-labelledby="dashboard-page-title">
           <h2 id="dashboard-page-title">{dashboardPages.find(item => item.id === page)!.title}</h2>
           <U9glPageGuard page={page}>
           {page === "overview" && <U9glOverview ctx={ctx} />}
+          {page === "player" && <U9glPlayerPage ctx={ctx} />}
           {isSectionPage(page) && <U9glSectionPage page={page} ctx={ctx} />}
-          {page === "history" && <LcarsPanel title="Session history" id="history-panel" headingLevel="h3">
+          {page === "history" && <LcarsPanel band={band("history", 0)} title="Session history" id="history-panel" headingLevel="h3">
             <div className="u9gl-history-controls">
             <label className="u9gl-session-picker">Viewing history<select value={activeChoice} onChange={e => setSessionChoice(e.target.value)}>
               <option value="current">Latest session</option>
@@ -161,7 +171,7 @@ export function U9glDiagnosticsView() {
               gapAfterMs={historyWindow === "long" ? 15_000 : 2000} />
           </LcarsPanel>}
           {page === "events" && <U9glEvents />}
-          {page === "metrics" && <LcarsPanel title="Exact current values" id="metrics-panel" headingLevel="h3">
+          {page === "metrics" && <LcarsPanel band={band("metrics", 0)} title="Exact current values" id="metrics-panel" headingLevel="h3">
             <LcarsDataTable label="Telemetry metrics" columns={metricColumns} data={{ state: "ready", rows }} getRowId={row => row.id} getRowLabel={row => row.label} pageSize={8} selection={{ selectedIds, onChange: setSelectedIds }} />
             <p className="lcars-copy">Every field of every telemetry group, as the raw 64-bit word and as its schema reads it. Texture allocation is tracked renderer memory, not total GPU VRAM.</p>
           </LcarsPanel>}

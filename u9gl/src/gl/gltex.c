@@ -1471,7 +1471,9 @@ int u9gl_magenta_keyed(int texId)
     static int read;
     char k[16];
     if (!read) {
-        const char *s = u9cfg_str("gl_magenta_key_textures", "5034,5036,5219");
+        if (!u9cfg_int("fix_magenta_key", 1)) { read = 1; list[0] = list[1] = 0; return 0; }
+        const char *s = u9cfg_str("gl_magenta_key_textures",
+                                   "1046,1623,2348,2365,2372,2501,3104,4462,4561,4960,5017,5034,5036,5219,5353,5602,5603,5984,6146,6273,6390,6395,7002,7348");
         size_t i, n = 1;
         read = 1;
         list[0] = ',';
@@ -1485,14 +1487,28 @@ int u9gl_magenta_keyed(int texId)
     return strstr(list, k) != NULL;
 }
 
-static unsigned key_magenta(unsigned fmt, const void *data, unsigned n, unsigned char *rgba)
+static unsigned key_magenta(unsigned fmt, const void *data, unsigned w, unsigned h,
+                            unsigned char *rgba, int *usedCorner)
 {
     const uint16_t *s16 = (const uint16_t *)data;
-    unsigned i, keyed = 0, packed = pack_key(fmt, 0x00FF00FFu);
+    unsigned i, n = w * h, keyed = 0, packed = pack_key(fmt, 0x00FF00FFu);
     unsigned mask = (fmt == 0x0B) ? 0x7FFFu : 0xFFFFu;
-    if (packed == 0xFFFFFFFFu) return 0;
+    *usedCorner = 0;
+    if (packed == 0xFFFFFFFFu || !n) return 0;
     for (i = 0; i < n; i++)
         if ((unsigned)(s16[i] & mask) == packed) { rgba[i * 4 + 3] = 0; keyed++; }
+    if (!keyed && w > 1 && h > 1) {
+        unsigned c = s16[0] & mask, count = 0;
+        if ((s16[w - 1] & mask) == c && (s16[(h - 1) * w] & mask) == c && (s16[n - 1] & mask) == c) {
+            for (i = 0; i < n; i++) if ((unsigned)(s16[i] & mask) == c) count++;
+            if (count * 2 >= n) {
+                for (i = 0; i < n; i++)
+                    if ((unsigned)(s16[i] & mask) == c) rgba[i * 4 + 3] = 0;
+                keyed = count;
+                *usedCorner = 1;
+            }
+        }
+    }
     return keyed;
 }
 
@@ -1646,11 +1662,12 @@ void u9gl_upload_pending(void)
                 }
                 if (u9gl_magenta_keyed(p->id)) {
                     static unsigned logged;
-                    unsigned keyed = key_magenta(p->fmt, p->data, n, rgba);
+                    int corner;
+                    unsigned keyed = key_magenta(p->fmt, p->data, p->w, p->h, rgba, &corner);
                     p->srcLevels = 0;
-                    if (logged++ < 24)
-                        u9log_line("GLTEX magenta keyed id=%d/%d fmt=0x%02X: %u/%u texels", p->id, p->id2,
-                                   p->fmt, keyed, n);
+                    if (logged++ < 40)
+                        u9log_line("GLTEX magenta keyed id=%d/%d fmt=0x%02X: %u/%u texels%s", p->id, p->id2,
+                                   p->fmt, keyed, n, corner ? " (no magenta: its corner colour)" : "");
                 }
                 unsigned char *ovEngineRgba = NULL;
                 unsigned ovEngineW = p->w, ovEngineH = p->h;

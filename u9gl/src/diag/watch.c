@@ -618,7 +618,7 @@ static void track_timer(uintptr_t addr, uint32_t now, unsigned frame)
 
 void u9watch_stream(int frame)
 {
-    int every = u9cfg_int("stream_actors", 300);
+    int every = u9cfg_int("stream_actors", 0);
     uint32_t tbl;
     unsigned i;
 

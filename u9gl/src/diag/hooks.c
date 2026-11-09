@@ -12,11 +12,14 @@ int u9cfg_int(const char *key, int def);
 #include "../gl/metrics.h"
 #include "../gl/glslots.h"
 #include "../fix/npcprobe.h"
+#include "../fix/actorwatch.h"
+#include "../fix/playerwatch.h"
 #include "../fix/meshprobe.h"
 #include "../fix/meshstat.h"
 #include "../fix/birdprobe.h"
 #include "../fix/portalfix.h"
 #include "../fix/lightwatch.h"
+#include "../fix/fixes.h"
 #include "../fix/flyerfix.h"
 #include "furniture.h"
 #include "../common/lifecycle.h"
@@ -1208,6 +1211,8 @@ static void U9CALL h_present(U9Renderer *self)
     u9metrics_engine_frame();
     u9metrics_toggle_poll();
     u9npc_tick();
+    u9player_watch_tick();
+    u9actor_tick();
     u9mesh_tick();
     u9meshstat_tick();
     u9bird_tick();
@@ -1215,6 +1220,8 @@ static void U9CALL h_present(U9Renderer *self)
     u9light_tick();
     u9flyer_tick();
     u9furn_tick();
+    u9linehit_tick();
+    u9fix_los_clamp_tick();
     mesh_hw_poll();
 
     uint32_t tri  = *(uint32_t *)U9_STAT_TRIANGLES;

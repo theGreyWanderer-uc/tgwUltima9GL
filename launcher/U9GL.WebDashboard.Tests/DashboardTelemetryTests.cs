@@ -28,7 +28,7 @@ public sealed class DashboardTelemetryTests
             }
             else { rejected++; Assert.IsNull(store.GetView().Current); Assert.IsEmpty(store.GetView().Sessions); }
         }
-        Assert.AreEqual(23, accepted);
+        Assert.AreEqual(24, accepted);
         Assert.AreEqual(37, rejected);
     }
 

@@ -260,8 +260,11 @@ typedef struct {
 static int      g_fireOn = -1, g_fireStr = 100, g_fireDunStr = 100, g_fireRange = 500;
 static int      g_fireTex[FIRE_TEX_MAX], g_nFireTex;
 static int      g_sootTex[FIRE_TEX_MAX], g_nSootTex, g_soot = 0;
+static int      g_glowTex[FIRE_TEX_MAX], g_nGlowTex, g_glowOn = 1, g_glowStr = 100, g_glowRange = 600;
+static int      g_gainTex[FIRE_TEX_MAX], g_nGainTex, g_glowGain = 100;
 static Fire     g_fire[FIRE_MAX];
 static int      g_nFire, g_fireMap = -1;
+static unsigned g_fireLoads;
 static unsigned g_fireLearnt, g_fireForgot, g_fireHidden, g_fireFull, g_fireLines, g_fireLitMax;
 
 static int id_list(const char *s, int *out)
@@ -291,7 +294,26 @@ static void fire_settings(void)
     s = u9cfg_str("gl_fire_textures", "6081,6082,4869,4870,4698,4699,5363,5364,5366,5367,5558,5559,5987");
     g_nFireTex = id_list(s, g_fireTex);
     g_nSootTex = id_list(u9cfg_str("gl_fire_soot_textures", "6080,3077,7240"), g_sootTex);
+    g_glowOn   = u9cfg_int("gl_glow_light", 1);
+    g_nGlowTex = id_list(u9cfg_str("gl_glow_light_textures", "3078,3130"), g_glowTex);
+    g_glowStr   = u9cfg_int("gl_glow_light_strength", 100);
+    g_glowRange = u9cfg_int("gl_glow_light_range", 600);
+    g_nGainTex  = id_list(u9cfg_str("gl_glow_gain_textures", "6413,6414"), g_gainTex);
+    g_glowGain  = u9cfg_int("gl_glow_gain", 100);
 }
+
+static int glow_texture(int id)
+{
+    int i;
+    for (i = 0; i < g_nGlowTex; i++) if (g_glowTex[i] == id) return 1;
+    return 0;
+}
+
+int   u9glpost_dome_tex(int texId);
+float u9glpost_dome_strength(void);
+float u9glpost_dome_range(void);
+int   u9glpost_dome_here(int map, const float p[3]);
+unsigned u9glpost_loads(void);
 
 float u9fx_soot_scale(int texId)
 {
@@ -299,6 +321,15 @@ float u9fx_soot_scale(int texId)
     fire_settings();
     if (g_soot == 100) return 1.0f;
     for (i = 0; i < g_nSootTex; i++) if (g_sootTex[i] == texId) return (float)g_soot / 100.0f;
+    return 1.0f;
+}
+
+float u9fx_glow_gain(int texId)
+{
+    int i;
+    fire_settings();
+    if (g_glowGain == 100) return 1.0f;
+    for (i = 0; i < g_nGainTex; i++) if (g_gainTex[i] == texId) return (float)g_glowGain / 100.0f;
     return 1.0f;
 }
 
@@ -333,7 +364,8 @@ static void fire_run(void *ctx, const U9EffectRun *r)
     int stride;
     const char *base = (const char *)u9gl_caster_vertices(&stride);
     unsigned t;
-    if (!fire_texture(r->texId)) return;
+    if (!(g_fireOn && fire_texture(r->texId)) && !(g_glowOn && glow_texture(r->texId)) &&
+        !(u9glpost_dome_tex(r->texId) && u9glpost_dome_strength() > 0.0f)) return;
     for (t = r->first; t + 2 < r->first + r->count; t += 3) {
         float a[3], b[3], c[3], m[3], col[3] = { 0, 0, 0 };
         int k, i, f = -1;
@@ -341,6 +373,8 @@ static void fire_run(void *ctx, const U9EffectRun *r)
             !world_of(v, (const float *)(base + (size_t)(t + 1) * (size_t)stride), b) ||
             !world_of(v, (const float *)(base + (size_t)(t + 2) * (size_t)stride), c)) continue;
         for (k = 0; k < 3; k++) m[k] = (a[k] + b[k] + c[k]) / 3.0f;
+        if (u9glpost_dome_tex(r->texId) && !(g_fireOn && fire_texture(r->texId)) &&
+            !(g_glowOn && glow_texture(r->texId)) && !u9glpost_dome_here(g_fireMap, m)) continue;
         for (i = 0; i < 3; i++) {
             const unsigned char *q = (const unsigned char *)(base + (size_t)(t + i) * (size_t)stride + 32);
             float al = q[3] / 255.0f;
@@ -349,7 +383,8 @@ static void fire_run(void *ctx, const U9EffectRun *r)
         for (i = 0; i < g_nFire; i++) {
             const Fire *F = &g_fire[i];
             float dx = m[0] - F->p[0], dy = m[1] - F->p[1], dz = m[2] - F->p[2];
-            if (F->used && dx * dx + dy * dy + dz * dz < FIRE_R * FIRE_R) { f = i; break; }
+            float R = u9glpost_dome_tex(r->texId) ? 400.0f : FIRE_R;
+            if (F->used && dx * dx + dy * dy + dz * dz < R * R) { f = i; break; }
         }
         if (f < 0) {
             for (i = 0; i < g_nFire && g_fire[i].used; i++) ;
@@ -380,11 +415,13 @@ static void fire_learn(const U9FrameView *v)
     DWORD now = u9time_now();
     int map = u9console_current_map(), i, k, tests = 0;
     fire_settings();
-    if (!g_fireOn) return;
-    if (map != g_fireMap) {
+    if (!g_fireOn && !g_glowOn && u9glpost_dome_strength() <= 0.0f) return;
+    if (map != g_fireMap || u9glpost_loads() != g_fireLoads) {
         int known = 0;
         for (i = 0; i < g_nFire; i++) known += g_fire[i].used;
-        if (known) u9log_line("GLFX fire: %d fires known on map %d, forgotten", known, g_fireMap);
+        if (known) u9log_line("GLFX fire: %d fires known on map %d, forgotten (%s)", known, g_fireMap,
+                              map != g_fireMap ? "map change" : "a save loaded");
+        g_fireLoads = u9glpost_loads();
         memset(g_fire, 0, sizeof g_fire);
         g_nFire = 0;
         g_fireMap = map;
@@ -406,6 +443,7 @@ static void fire_learn(const U9FrameView *v)
             F->tris = F->fn;
             F->fn = 0;
             for (k = 0; k < 3; k++) F->fs[k] = F->fc[k] = 0.0;
+        } else if (glow_texture(F->tex) || u9glpost_dome_tex(F->tex)) {
         } else if (now - F->seen > FIRE_FORGET_MS && on_screen(v, F->p)) {
             if (tests < FIRE_TESTS && u9glpost_point_covered(v, F->p, FIRE_COVER) == 1) {
                 F->seen = now;
@@ -425,12 +463,14 @@ int u9fx_fire_lights(U9LightSnap *all, int n, int cap, const U9FrameView *v, int
     float bd[U9FX_LIGHTS], ahead[3], s, t = (float)(u9time_now() % 100000u) / 1000.0f;
     fire_settings();
     s = (float)(dungeon ? g_fireDunStr : g_fireStr) / 100.0f;
-    if (!g_fireOn || s <= 0.0f) return n;
+    if ((!g_fireOn || s <= 0.0f) && (!g_glowOn || g_glowStr <= 0) && u9glpost_dome_strength() <= 0.0f) return n;
     for (k = 0; k < 3; k++) ahead[k] = v->m[k * 4 + 3] + v->m[k * 4 + 1] * 600.0f;
     for (k = 0; k < g_nFire; k++) {
         const Fire *F = &g_fire[k];
         float dx, dy, dz, dd;
         if (!F->used || !F->seen) continue;
+        if (u9glpost_dome_tex(F->tex) ? u9glpost_dome_strength() <= 0.0f
+            : glow_texture(F->tex) ? (!g_glowOn || g_glowStr <= 0) : (!g_fireOn || s <= 0.0f)) continue;
         dx = F->p[0] - ahead[0]; dy = F->p[1] - ahead[1]; dz = F->p[2] - ahead[2];
         dd = dx * dx + dy * dy + dz * dz;
         if (dd > 4000.0f * 4000.0f || (nb == U9FX_LIGHTS && dd >= bd[nb - 1])) continue;
@@ -442,17 +482,21 @@ int u9fx_fire_lights(U9LightSnap *all, int n, int cap, const U9FrameView *v, int
         const Fire *F = &g_fire[best[k]];
         U9LightSnap *l = &all[n++];
         float ph = (float)(best[k] % 97) * 0.61f;
-        float flick = 0.86f + 0.09f * sinf(t * 7.3f + ph) + 0.05f * sinf(t * 13.7f + 2.0f * ph);
+        int dome = u9glpost_dome_tex(F->tex);
+        int glow = dome || glow_texture(F->tex);
+        float flick = glow ? 1.0f : 0.86f + 0.09f * sinf(t * 7.3f + ph) + 0.05f * sinf(t * 13.7f + 2.0f * ph);
+        float str = dome ? u9glpost_dome_strength() : glow ? (float)g_glowStr / 100.0f : s;
         int c;
         memset(l, 0, sizeof *l);
         for (c = 0; c < 3; c++) {
             l->pos[c] = l->base[c] = F->p[c];
-            l->rgb[c] = F->rgb[c] * s * flick;
+            l->rgb[c] = F->rgb[c] * str * flick;
         }
         memcpy(l->baseRgb, l->rgb, sizeof l->rgb);
-        l->range = (float)g_fireRange;
+        l->range = dome ? u9glpost_dome_range() : (float)(glow ? g_glowRange : g_fireRange);
         l->rec = 0xE1000000u + (unsigned)best[k];
         l->type = U9TYPE_FIRE_LIGHT;
+        if (dome) l->flags |= U9LIGHT_SOFT;
     }
     if ((unsigned)nb > g_fireLitMax) g_fireLitMax = (unsigned)nb;
     return n;
@@ -490,6 +534,34 @@ void u9fx_fire_command(const char *arg, void (*out)(const char *fmt, ...))
         g_fireForgot, g_fireHidden, g_soot);
 }
 
+void u9fx_glow_command(const char *arg, void (*out)(const char *fmt, ...))
+{
+    int i, known = 0;
+    fire_settings();
+    while (arg && *arg == ' ') arg++;
+    if (!arg) arg = "";
+    if (!strcmp(arg, "on")) g_glowOn = 1;
+    else if (!strcmp(arg, "off")) g_glowOn = 0;
+    else if (!strncmp(arg, "strength ", 9)) g_glowStr = atoi(arg + 9);
+    else if (!strncmp(arg, "range ", 6)) g_glowRange = atoi(arg + 6);
+    else if (!strncmp(arg, "gain ", 5)) g_glowGain = atoi(arg + 5);
+    else if (*arg) {
+        out("pool glow on|off | strength <percent> | range <units> | gain <percent>   lights for glows the game"
+            " draws unlit (gl_glow_light_textures); gain brightens faint glows (gl_glow_gain_textures); the fires are pool fire");
+        return;
+    }
+    if (g_glowStr < 0) g_glowStr = 0;
+    if (g_glowRange < 50) g_glowRange = 50;
+    if (g_glowGain < 0) g_glowGain = 0;
+    if (g_glowGain > 1000) g_glowGain = 1000;
+    if (*arg) u9log_line("GLFX glow: '%s' - %s, strength %d%%, range %d, gain %d%%", arg, g_glowOn ? "on" : "off",
+                         g_glowStr, g_glowRange, g_glowGain);
+    for (i = 0; i < g_nFire; i++) known += g_fire[i].used && glow_texture(g_fire[i].tex);
+    out("glow lights %s: %d known on map %d; strength %d%%, range %d; textures %d listed (gl_glow_light_textures);"
+        " faint glows x%d%% (%d gl_glow_gain_textures)",
+        g_glowOn ? "on" : "off", known, g_fireMap, g_glowStr, g_glowRange, g_nGlowTex, g_glowGain, g_nGainTex);
+}
+
 #define RUNE_MAX 16
 typedef struct {
     int      texId;
@@ -499,7 +571,7 @@ typedef struct {
     float    rgb[3];
 } RuneTex;
 static RuneTex  g_rune[RUNE_MAX];
-static int      g_nRune, g_runeOn = -1, g_runeStr = 75, g_runeRange = 250;
+static int      g_nRune, g_runeOn = -1, g_runeStr = 75, g_runeRange = 600;
 static int      g_runeSat = 400;
 static unsigned g_runeMasks, g_runeLitMax;
 
@@ -509,7 +581,7 @@ static void rune_settings(void)
     if (g_runeOn >= 0) return;
     g_runeOn    = u9cfg_int("gl_rune_light", 1);
     g_runeStr   = u9cfg_int("gl_rune_light_strength", 75);
-    g_runeRange = u9cfg_int("gl_rune_light_range", 250);
+    g_runeRange = u9cfg_int("gl_rune_light_range", 600);
     g_runeSat   = u9cfg_int("gl_rune_light_saturation", 400);
     n = id_list(u9cfg_str("gl_rune_textures", "6812,6813,6814,6817,6819,6820,6821,6822"), ids);
     if (n > RUNE_MAX) n = RUNE_MAX;
@@ -699,6 +771,367 @@ int u9fx_rune_tint(int texId, float tint[3])
     if (!r || !r->mask) return 0;
     rune_colour(r, tint);
     return 1;
+}
+
+#define GLYPH_MAX 16
+typedef struct {
+    int      texId;
+    unsigned mask;
+    int      tried;
+    int      pillar;
+    float    rgb[3];
+} GlyphTex;
+static GlyphTex g_glyph[GLYPH_MAX];
+static int      g_nGlyph = -1;
+
+#define PILLAR_MAX 16
+typedef struct { double s[3]; double n; int used; } Pillar;
+static Pillar   g_pillar[PILLAR_MAX];
+static int      g_nPillar, g_pillarMap = -1, g_pillarFull;
+static unsigned g_pillarLoads, g_pillarLitMax;
+static int      g_pillarOn = -1, g_pillarGlow = 1000, g_pillarBright = 75, g_pillarReach = 800;
+static float    g_pillarRgb[3] = { 1.0f, 0.52f, 0.34f };
+static int      g_pillarRgbSet;
+unsigned u9glpost_loads(void);
+
+static void pillar_settings(void)
+{
+    if (g_pillarOn >= 0) return;
+    g_pillarOn     = u9cfg_int("gl_pillar_light", 1);
+    g_pillarGlow   = u9cfg_int("gl_pillar_glow", 1000);
+    g_pillarBright = u9cfg_int("gl_pillar_light_bright", 75);
+    g_pillarReach  = u9cfg_int("gl_pillar_light_reach", 800);
+    if (g_pillarGlow < 0) g_pillarGlow = 0;
+    if (g_pillarBright < 0) g_pillarBright = 0;
+    if (g_pillarReach < 30) g_pillarReach = 30;
+}
+
+static GlyphTex *glyph_of(int texId)
+{
+    int k;
+    if (g_nGlyph < 0) {
+        int ids[FIRE_TEX_MAX], n = id_list(u9cfg_str("gl_glyph_textures", "4403"), ids), j;
+        int pids[FIRE_TEX_MAX], np = id_list(u9cfg_str("gl_pillar_textures", "4421"), pids);
+        if (n > GLYPH_MAX) n = GLYPH_MAX;
+        memset(g_glyph, 0, sizeof g_glyph);
+        for (k = 0; k < n; k++) g_glyph[k].texId = ids[k];
+        for (j = 0; j < np && n < GLYPH_MAX; j++) {
+            for (k = 0; k < n && g_glyph[k].texId != pids[j]; k++) ;
+            if (k == n) g_glyph[n++].texId = pids[j];
+            g_glyph[k].pillar = 1;
+        }
+        g_nGlyph = n;
+    }
+    for (k = 0; k < g_nGlyph; k++) if (g_glyph[k].texId == texId) return &g_glyph[k];
+    return NULL;
+}
+
+int u9fx_is_pillar(int texId)
+{
+    GlyphTex *g = glyph_of(texId);
+    return g && g->pillar;
+}
+
+float u9fx_pillar_glow(void)
+{
+    pillar_settings();
+    return (float)g_pillarGlow / 100.0f;
+}
+
+int u9fx_is_glyph(int texId)
+{
+    return glyph_of(texId) != NULL;
+}
+
+static float glyph_step(float e0, float e1, float x)
+{
+    float t = (x - e0) / (e1 - e0);
+    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static unsigned glyph_build(GlyphTex *g, unsigned glTex)
+{
+    GLint w = 0, h = 0, pack = 4;
+    unsigned char *px, *mask;
+    double sum[3] = { 0, 0, 0 }, msum = 0;
+    float mx = 0.0f;
+    GLuint t = 0;
+    int i, k, n;
+
+    glPushAttrib(GL_TEXTURE_BIT);
+    glBindTexture(GL_TEXTURE_2D, glTex);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+    if (w < 8 || h < 8 || w > 1024 || h > 1024) { glPopAttrib(); return 0; }
+    n = w * h;
+    px = (unsigned char *)malloc((size_t)n * 4u);
+    mask = (unsigned char *)malloc((size_t)n);
+    if (!px || !mask) { free(px); free(mask); glPopAttrib(); return 0; }
+    glGetIntegerv(GL_PACK_ALIGNMENT, &pack);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glPixelStorei(GL_PACK_ALIGNMENT, pack);
+    for (i = 0; i < n; i++) {
+        float r = px[i * 4] / 255.0f, b = px[i * 4 + 2] / 255.0f;
+        float m = glyph_step(0.12f, 0.25f, r - b) * glyph_step(0.25f, 0.45f, r);
+        mask[i] = (unsigned char)(m * 255.0f + 0.5f);
+        for (k = 0; k < 3; k++) sum[k] += px[i * 4 + k] * m;
+        msum += m;
+    }
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA8, w, h, 0, GL_ALPHA, GL_UNSIGNED_BYTE, mask);
+    glPopAttrib();
+    for (k = 0; k < 3; k++) {
+        g->rgb[k] = msum > 0.0 ? (float)(sum[k] / msum) : 255.0f;
+        if (g->rgb[k] > mx) mx = g->rgb[k];
+    }
+    for (k = 0; k < 3; k++) g->rgb[k] = mx > 0.0f ? g->rgb[k] / mx : 1.0f;
+    u9log_line("GLFX glyph %d: mask %dx%d over %.0f%% of the tile, glyph colour %.2f,%.2f,%.2f",
+               g->texId, w, h, 100.0 * msum / n, (double)g->rgb[0], (double)g->rgb[1], (double)g->rgb[2]);
+    free(px); free(mask);
+    return t;
+}
+
+unsigned u9fx_glyph_mask(int texId, unsigned glTex)
+{
+    GlyphTex *g = glyph_of(texId);
+    if (!g) return 0;
+    if (!g->tried) {
+        g->tried = 1;
+        g->mask = glyph_build(g, glTex);
+        if (!g->mask) u9log_line("GLFX glyph %d: its texture could not be read - it blooms whole", texId);
+    }
+    return g->mask;
+}
+
+int u9fx_glyph_tint(int texId, float tint[3])
+{
+    GlyphTex *g = glyph_of(texId);
+    int k;
+    if (!g || !g->mask) return 0;
+    for (k = 0; k < 3; k++) tint[k] = g->rgb[k];
+    return 1;
+}
+
+static void pillar_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    const U9FrameView *v = (const U9FrameView *)ctx;
+    int stride, k, s;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    unsigned t;
+    (void)glTex; (void)cutout;
+    for (t = first; t + 2 < first + count; t += 3) {
+        float a[3], b[3], c[3], m[3];
+        if (!world_of(v, (const float *)(base + (size_t)t * (size_t)stride), a) ||
+            !world_of(v, (const float *)(base + (size_t)(t + 1) * (size_t)stride), b) ||
+            !world_of(v, (const float *)(base + (size_t)(t + 2) * (size_t)stride), c)) continue;
+        for (k = 0; k < 3; k++) m[k] = (a[k] + b[k] + c[k]) / 3.0f;
+        for (s = 0; s < g_nPillar; s++) {
+            float dx, dy;
+            if (!g_pillar[s].used) continue;
+            dx = m[0] - (float)(g_pillar[s].s[0] / g_pillar[s].n);
+            dy = m[1] - (float)(g_pillar[s].s[1] / g_pillar[s].n);
+            if (dx * dx + dy * dy < 250.0f * 250.0f) break;
+        }
+        if (s == g_nPillar) {
+            if (g_nPillar >= PILLAR_MAX) { g_pillarFull++; continue; }
+            memset(&g_pillar[s], 0, sizeof g_pillar[s]);
+            g_pillar[s].used = 1;
+            g_nPillar++;
+            u9log_line("GLFX pillar %d learnt on map %d at %.0f,%.0f,%.0f", s, g_pillarMap,
+                       (double)m[0], (double)m[1], (double)m[2]);
+        }
+        if (g_pillar[s].n > 4000.0) {
+            for (k = 0; k < 3; k++) g_pillar[s].s[k] *= 0.5;
+            g_pillar[s].n *= 0.5;
+        }
+        for (k = 0; k < 3; k++) g_pillar[s].s[k] += m[k];
+        g_pillar[s].n += 1.0;
+    }
+}
+
+int u9fx_pillar_lights(U9LightSnap *all, int n, int cap, const U9FrameView *v)
+{
+    int map = u9console_current_map(), s, k, i, lit = 0;
+    float str;
+    pillar_settings();
+    if (map != g_pillarMap || u9glpost_loads() != g_pillarLoads) {
+        if (g_nPillar) u9log_line("GLFX pillar: %d columns known on map %d, forgotten", g_nPillar, g_pillarMap);
+        memset(g_pillar, 0, sizeof g_pillar);
+        g_nPillar = 0;
+        g_pillarMap = map;
+        g_pillarLoads = u9glpost_loads();
+    }
+    glyph_of(0);
+    for (i = 0; i < g_nGlyph; i++) {
+        if (!g_glyph[i].pillar) continue;
+        u9gl_runs_with_texture(g_glyph[i].texId, pillar_run, (void *)v);
+        if (g_glyph[i].mask && !g_pillarRgbSet) {
+            for (k = 0; k < 3; k++) g_pillarRgb[k] = g_glyph[i].rgb[k];
+            g_pillarRgbSet = 1;
+        }
+    }
+    str = (float)g_pillarBright / 100.0f;
+    if (!g_pillarOn || str <= 0.0f) return n;
+    for (s = 0; s < g_nPillar && n < cap && lit < U9FX_PILLAR_LIGHTS; s++) {
+        U9LightSnap *l;
+        if (!g_pillar[s].used || g_pillar[s].n <= 0.0) continue;
+        l = &all[n++];
+        memset(l, 0, sizeof *l);
+        for (k = 0; k < 3; k++) {
+            l->pos[k] = l->base[k] = (float)(g_pillar[s].s[k] / g_pillar[s].n);
+            l->rgb[k] = g_pillarRgb[k] * str;
+        }
+        memcpy(l->baseRgb, l->rgb, sizeof l->rgb);
+        l->range = (float)g_pillarReach;
+        l->rec = 0xE3000000u + (unsigned)s;
+        l->type = U9TYPE_PILLAR_LIGHT;
+        l->flags |= U9LIGHT_SOFT;
+        lit++;
+    }
+    if ((unsigned)lit > g_pillarLitMax) g_pillarLitMax = (unsigned)lit;
+    (void)v;
+    return n;
+}
+
+static int      g_gateOn = -1, g_gateGlow = 400, g_gateBright = 500, g_gateReach = 600, g_gateRadius = 400;
+static int      g_gateMap = 46;
+static float    g_gateAt[3] = { 7105.0f, 8777.0f, 1990.0f };
+static float    g_gateRgb[3] = { 1.0f, 0.16f, 0.08f };
+static int      g_gateTex[FIRE_TEX_MAX], g_nGateTex;
+
+static void gate_settings(void)
+{
+    const char *s;
+    int mp, r, g, b;
+    float x, y, z;
+    if (g_gateOn >= 0) return;
+    g_gateOn     = u9cfg_int("gl_gate_light", 1);
+    g_gateGlow   = u9cfg_int("gl_gate_glow", 400);
+    g_gateBright = u9cfg_int("gl_gate_light_bright", 500);
+    g_gateReach  = u9cfg_int("gl_gate_light_reach", 600);
+    g_gateRadius = u9cfg_int("gl_gate_radius", 400);
+    g_nGateTex   = id_list(u9cfg_str("gl_gate_textures", "6953"), g_gateTex);
+    s = u9cfg_str("gl_gate_at", "46:7105,8777,1990");
+    if (s && sscanf(s, "%d:%f,%f,%f", &mp, &x, &y, &z) == 4) {
+        g_gateMap = mp; g_gateAt[0] = x; g_gateAt[1] = y; g_gateAt[2] = z;
+    }
+    s = u9cfg_str("gl_gate_light_colour", "255,40,20");
+    if (s && sscanf(s, "%d,%d,%d", &r, &g, &b) == 3) {
+        g_gateRgb[0] = (float)r / 255.0f; g_gateRgb[1] = (float)g / 255.0f; g_gateRgb[2] = (float)b / 255.0f;
+    }
+    if (g_gateGlow < 0) g_gateGlow = 0;
+    if (g_gateBright < 0) g_gateBright = 0;
+    if (g_gateReach < 30) g_gateReach = 30;
+    if (g_gateRadius < 50) g_gateRadius = 50;
+}
+
+int u9fx_gate_tex(int texId)
+{
+    int k;
+    gate_settings();
+    for (k = 0; k < g_nGateTex; k++) if (g_gateTex[k] == texId) return 1;
+    return 0;
+}
+
+int u9fx_gate_here(const float p[3])
+{
+    float dx, dy;
+    gate_settings();
+    if (u9console_current_map() != g_gateMap) return 0;
+    dx = p[0] - g_gateAt[0]; dy = p[1] - g_gateAt[1];
+    return dx * dx + dy * dy < (float)g_gateRadius * (float)g_gateRadius;
+}
+
+float u9fx_gate_glow(void)
+{
+    gate_settings();
+    return (float)g_gateGlow / 100.0f;
+}
+
+int u9fx_gate_lights(U9LightSnap *all, int n, int cap)
+{
+    U9LightSnap *l;
+    int k;
+    gate_settings();
+    if (!g_gateOn || g_gateBright <= 0 || n >= cap || u9console_current_map() != g_gateMap) return n;
+    l = &all[n++];
+    memset(l, 0, sizeof *l);
+    for (k = 0; k < 3; k++) {
+        l->pos[k] = l->base[k] = g_gateAt[k];
+        l->rgb[k] = g_gateRgb[k] * (float)g_gateBright / 100.0f;
+    }
+    memcpy(l->baseRgb, l->rgb, sizeof l->rgb);
+    l->range = (float)g_gateReach;
+    l->rec = 0xE4000000u;
+    l->type = U9TYPE_GATE_LIGHT;
+    l->flags |= U9LIGHT_SOFT;
+    return n;
+}
+
+void u9fx_gate_command(const char *arg, void (*out)(const char *fmt, ...))
+{
+    gate_settings();
+    while (arg && *arg == ' ') arg++;
+    if (!arg) arg = "";
+    if (!strcmp(arg, "on")) g_gateOn = 1;
+    else if (!strcmp(arg, "off")) g_gateOn = 0;
+    else if (!strncmp(arg, "glow ", 5)) g_gateGlow = atoi(arg + 5);
+    else if (!strncmp(arg, "bright ", 7)) g_gateBright = atoi(arg + 7);
+    else if (!strncmp(arg, "reach ", 6)) g_gateReach = atoi(arg + 6);
+    else if (*arg) {
+        out("post blackgate on|off (the light) | glow <percent, 0 off> | bright <percent> | reach <units>");
+        return;
+    }
+    if (g_gateGlow < 0) g_gateGlow = 0;
+    if (g_gateGlow > 1000) g_gateGlow = 1000;
+    if (g_gateBright < 0) g_gateBright = 0;
+    if (g_gateBright > 2000) g_gateBright = 2000;
+    if (g_gateReach < 30) g_gateReach = 30;
+    if (g_gateReach > 5000) g_gateReach = 5000;
+    if (*arg) u9log_line("GLFX black gate: '%s' - light %s, glow %d%%, bright %d%%, reach %d", arg,
+                         g_gateOn ? "on" : "off", g_gateGlow, g_gateBright, g_gateReach);
+    out("black gate: glow %d%% of the bloom; light %s, bright %d%%, reach %d, colour %.2f,%.2f,%.2f;"
+        " at map %d %.0f,%.0f,%.0f, radius %d%s", g_gateGlow, g_gateOn ? "on" : "off", g_gateBright,
+        g_gateReach, (double)g_gateRgb[0], (double)g_gateRgb[1], (double)g_gateRgb[2], g_gateMap,
+        (double)g_gateAt[0], (double)g_gateAt[1], (double)g_gateAt[2], g_gateRadius,
+        u9console_current_map() == g_gateMap ? "" : " (not this map)");
+}
+
+void u9fx_pillar_command(const char *arg, void (*out)(const char *fmt, ...))
+{
+    int s, known = 0;
+    pillar_settings();
+    while (arg && *arg == ' ') arg++;
+    if (!arg) arg = "";
+    if (!strcmp(arg, "on")) g_pillarOn = 1;
+    else if (!strcmp(arg, "off")) g_pillarOn = 0;
+    else if (!strncmp(arg, "glow ", 5)) g_pillarGlow = atoi(arg + 5);
+    else if (!strncmp(arg, "bright ", 7)) g_pillarBright = atoi(arg + 7);
+    else if (!strncmp(arg, "reach ", 6)) g_pillarReach = atoi(arg + 6);
+    else if (!strcmp(arg, "forget")) { memset(g_pillar, 0, sizeof g_pillar); g_nPillar = 0; }
+    else if (*arg) {
+        out("post pillar on|off (the light) | glow <percent, 0 off> | bright <percent> | reach <units> | forget");
+        return;
+    }
+    if (g_pillarGlow < 0) g_pillarGlow = 0;
+    if (g_pillarGlow > 1000) g_pillarGlow = 1000;
+    if (g_pillarBright < 0) g_pillarBright = 0;
+    if (g_pillarBright > 2000) g_pillarBright = 2000;
+    if (g_pillarReach < 30) g_pillarReach = 30;
+    if (g_pillarReach > 5000) g_pillarReach = 5000;
+    if (*arg) u9log_line("GLFX pillar: '%s' - light %s, glow %d%%, bright %d%%, reach %d", arg,
+                         g_pillarOn ? "on" : "off", g_pillarGlow, g_pillarBright, g_pillarReach);
+    for (s = 0; s < g_nPillar; s++) known += g_pillar[s].used;
+    out("small columns: glow %d%% of the bloom; light %s, bright %d%%, reach %d, colour %.2f,%.2f,%.2f%s;"
+        " %d columns known on map %d, up to %u lit at once",
+        g_pillarGlow, g_pillarOn ? "on" : "off", g_pillarBright, g_pillarReach,
+        (double)g_pillarRgb[0], (double)g_pillarRgb[1], (double)g_pillarRgb[2],
+        g_pillarRgbSet ? "" : " (not yet read from a column)", known, g_pillarMap, g_pillarLitMax);
 }
 
 int u9fx_rune_lights(U9LightSnap *all, int n, int cap, const U9FrameView *v)

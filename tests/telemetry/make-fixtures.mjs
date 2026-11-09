@@ -27,6 +27,7 @@ const schema = [
   { id: 13, name: "overrideResident", version: 1, fields: ["count", "bytes"] },
   { id: 16, name: "textureList", version: 1, fields: ["cache_entries", "count"] },
   { id: 17, name: "meshList", version: 1, fields: ["mesh_types", "count"] },
+  { id: 18, name: "player", version: 3, fields: ["record_valid", "strength", "dexterity", "intelligence", "health", "health_max", "health_base", "mana", "mana_max", "mana_base", "breath", "breath_max", "breath_base", "armour", "armour_bonus", "magic_resist_bonus", "state_flags", "weapon", "skill_fists", "skill_one_handed", "skill_two_handed", "skill_staff", "skill_ranged", "datums_valid", "class_chosen", "class_id", "shrines", "spells_lo", "spells_hi", "equip_left_hand", "equip_right_hand", "equip_scabbard", "equip_left_shoulder", "equip_right_shoulder", "equip_quiver", "equip_left_forearm", "equip_hands_class", "gold", "arrows", "active_spells", "spell_discount", "combat_states", "stun_ms"] },
   { id: 15, name: "areaCells", version: 1, fields: ["grid_w", "grid_h", "avatar_valid", "avatar_x", "avatar_y", "slot_capacity", "cells_outside", "count"] },
   { id: 14, name: "gpu", version: 1, fields: ["frame_no", "samples", "skipped", "support", "frame_us", "region_mask", "scene_us", "beam_us", "rays_us", "bloom_us", "ao_us", "pool_shadows_us", "sun_shadows_us", "water_us", "composite_us"] },
 ];
@@ -147,6 +148,10 @@ addSample("lists", "Accepted", { groups: groups(g => g.push(
     extra: [String(5448n | 3n << 16n | 256n << 24n | 128n << 36n | 5n << 48n | 1n << 61n), String(8047n | 4095n << 24n | 64n << 36n | 1n << 60n)] },
   { id: 17, version: 1, flags: 1, collected: "108000000", values: ["900", "1"],
     extra: [String(4711n | 120n << 16n | 65536n << 32n | 1n << 60n)] })) });
+addSample("player", "Accepted", { groups: groups(g => g.push(
+  { id: 18, version: 3, flags: 1, collected: "108000000", values: ["1", "1", i64(-1), "3", "85", "120", "110", "40", "60", "50", "7", "30", "30",
+    "12", "3", "5", "2147483650", i64(-1), "3", "1", "0", "2", "1", "1", "1", "5", "129", "9223372036854775809", "8192",
+    "5689", "1298", "0", "0", "0", "5651", "4882", "4", "58", "11", "2048", "0", "288", "1500"] })) });
 addSample("area-cells-count-past-payload", "Invalid", { groups: groups(g => g.push(
   { id: 15, version: 1, flags: 1, collected: "108000000", values: ["128", "128", "0", "0", "0", "2045", "0", "3"], extra: ["1"] })) });
 addSample("world-before-load", "Accepted", { groups: groups(g => g.push(

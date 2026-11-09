@@ -23,7 +23,7 @@ public sealed class WebDashboardViewModel : ObservableObject
     {
         _settings = settings;
         _log = log;
-        _host = new(sourceFactory: () => new GameTelemetrySource(folder));
+        _host = new(sourceFactory: () => new GameTelemetrySource(folder), gameRoot: folder.Root);
         _host.Telemetry.StateChanged += LogTelemetryState;
         OpenCommand = new RelayCommand(OpenBrowser, () => IsRunning && !_closing);
         RetryCommand = new RelayCommand(() => _ = ApplyAsync(), () => Enabled && !IsRunning && CanChange);

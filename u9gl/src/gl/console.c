@@ -11,6 +11,7 @@
 #include "../injection/config.h"
 #include "../fix/fixmem.h"
 #include "../fix/gold.h"
+#include "../fix/playerset.h"
 #include "metrics.h"
 #include "npcscale.h"
 #include "npccmd.h"
@@ -21,6 +22,7 @@
 #include "../fix/lightwatch.h"
 #include "glsun.h"
 #include "glfog.h"
+#include "glunder.h"
 #include "glbeam.h"
 #include "glrays.h"
 void u9gl_dump_after(unsigned seconds);
@@ -534,6 +536,13 @@ static void execute(char *line)
         out("set npc flag <name> <flag> <0|1>");
         out("get npc highway <name> the highway points in an NPC's schedule, any map");
         out("get npc size [all|<n>|<name>]  NPC body sizes: npc %%, uniform, axes, live");
+        out("get stat [str|dex|int]   the Avatar's attributes; bare: all three");
+        out("set stat str|dex|int <0-3>");
+        out("get skill [fists|1h|2h|staff|ranged]   weapon skills (Novice..Master); bare: all five");
+        out("set skill fists|1h|2h|staff|ranged <0-3>");
+        out("get effect            the Avatar's status effects (state bits)");
+        out("set effect <name>     set one (poison [hits], invisible, sleep, lock, ...); bare: the names");
+        out("unset effect <name>|all  clear one, or every one");
         out("unset tp <name>       forget a stored spot");
         out("tp <name>             go to a stored spot");
         out("tppos <map>           go to the middle of what is built in region <map>");
@@ -547,6 +556,7 @@ static void execute(char *line)
         out("sun                   the sun's direction, time and height, from the sky");
         out("moon [shadow ...]     the moons' phases and directions, and their shadows");
         out("fog [volume on|off]   the mist sheet as measured, and the volume fog in its place");
+        out("water [on|off|margin|pad|forget]   is the camera under the water, and the water's height");
         out("beam [on|off|depth|strength]   light shafts (texture 1760) as volumes; post beam: as sent");
         out("rays [on|off|view|strength ...]   sun rays: the sky near the sun blurred toward it");
         out("dump [seconds]        a frame dump (as Ctrl+F9) that many seconds from now, 5 by default");
@@ -570,14 +580,21 @@ static void execute(char *line)
         cmd_opt(arg);
     } else if (!strcmp(cmd, "get")) {
         if (!strncmp(arg, "npc ", 4)) u9npc_get_command(arg + 4, out);
-        else out("usage: get npc pos|target|flag <name> ...");
+        else if (!strncmp(arg, "stat", 4) && (arg[4] == ' ' || !arg[4])) u9playerset_get_stat(arg + 4, out);
+        else if (!strncmp(arg, "skill", 5) && (arg[5] == ' ' || !arg[5])) u9playerset_get_skill(arg + 5, out);
+        else if (!strncmp(arg, "effect", 6) && (arg[6] == ' ' || !arg[6])) u9playerset_get_effect(arg + 6, out);
+        else out("usage: get npc pos|target|flag <name> ... | get stat [<name>] | get skill [<name>] | get effect");
     } else if (!strcmp(cmd, "set")) {
         if (!strncmp(arg, "tp ", 3)) cmd_set_tp(arg + 3);
         else if (!strncmp(arg, "npc ", 4)) u9npc_set_command(arg + 4, out);
-        else out("usage: set tp <name> | set npc pos|target|flag <name> ...");
+        else if (!strncmp(arg, "stat", 4) && (arg[4] == ' ' || !arg[4])) u9playerset_set_stat(arg + 4, out);
+        else if (!strncmp(arg, "skill", 5) && (arg[5] == ' ' || !arg[5])) u9playerset_set_skill(arg + 5, out);
+        else if (!strncmp(arg, "effect", 6) && (arg[6] == ' ' || !arg[6])) u9playerset_set_effect(arg + 6, out);
+        else out("usage: set tp <name> | set npc pos|target|flag <name> ... | set stat <name> <0-3> | set skill <name> <0-3> | set effect <name>");
     } else if (!strcmp(cmd, "unset")) {
         if (!strncmp(arg, "tp ", 3)) cmd_unset_tp(arg + 3);
-        else out("usage: unset tp <name>");
+        else if (!strncmp(arg, "effect", 6) && (arg[6] == ' ' || !arg[6])) u9playerset_unset_effect(arg + 6, out);
+        else out("usage: unset tp <name> | unset effect <name>|all");
     } else if (!strcmp(cmd, "tp")) {
         cmd_tp(arg);
     } else if (!strcmp(cmd, "tppos")) {
@@ -592,6 +609,8 @@ static void execute(char *line)
         u9moon_command(arg, out);
     } else if (!strcmp(cmd, "fog")) {
         u9fog_command(arg, out);
+    } else if (!strcmp(cmd, "water")) {
+        u9under_command(arg, out);
     } else if (!strcmp(cmd, "beam")) {
         u9beam_command(arg, out);
     } else if (!strcmp(cmd, "rays")) {
@@ -699,7 +718,7 @@ static void paste(void)
 
 static void complete(void)
 {
-    static const char *const cmds[] = { "help", "keys", "pos", "opt", "get", "set", "unset", "tp", "tppos", "list", "lights", "sun", "moon", "fog", "beam", "rays", "dump", "post", "pool", "datum", "gate", "give", "show", "clear", "quit" };
+    static const char *const cmds[] = { "help", "keys", "pos", "opt", "get", "set", "unset", "tp", "tppos", "list", "lights", "sun", "moon", "fog", "water", "beam", "rays", "dump", "post", "pool", "datum", "gate", "give", "show", "clear", "quit" };
     static char names[2048];
     const char *pool[64], *cand[64];
     char words[2][IN_W], path[MAX_PATH], *p;
@@ -722,6 +741,13 @@ static void complete(void)
         for (i = 0; i < sizeof cmds / sizeof cmds[0]; i++) pool[np++] = cmds[i];
     } else if (nw == 1 && (!strcmp(words[0], "set") || !strcmp(words[0], "unset"))) {
         pool[np++] = "tp";
+        pool[np++] = "effect";
+    } else if (nw == 2 && !strcmp(words[1], "effect") &&
+               (!strcmp(words[0], "set") || !strcmp(words[0], "unset"))) {
+        const char *nm;
+        for (i = 0; (nm = u9playerset_effect_name((int)i)) != NULL && np < 63; i++) pool[np++] = nm;
+        if (!strcmp(words[0], "unset")) pool[np++] = "all";
+        names_done = 1;
     } else if (nw == 1 && !strcmp(words[0], "list")) {
         pool[np++] = "tp";
         pool[np++] = "map";

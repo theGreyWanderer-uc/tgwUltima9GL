@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { resolveLcarsColorStyle, type LcarsColorProps } from "./lcars-color";
+import type { LcarsTone } from "./lcars-theme-tokens";
 import "./lcars.css";
 
 export function LcarsCap({
@@ -108,6 +109,13 @@ export function LcarsFrame({
   );
 }
 
+export type LcarsPanelBand = {
+  tone?: LcarsTone;
+  index?: ReactNode;
+  code?: ReactNode;
+  codeState?: "nominal" | "warning" | "critical" | "offline";
+};
+
 export function LcarsPanel({
   headingLevel: Heading = "h2",
   tone = "secondary",
@@ -115,6 +123,7 @@ export function LcarsPanel({
   style,
   title,
   id,
+  band,
   children,
   className = "",
   ...props
@@ -123,7 +132,9 @@ export function LcarsPanel({
     id: string;
     title: ReactNode;
     headingLevel?: "h2" | "h3" | "h4";
+    band?: LcarsPanelBand;
   }) {
+  const inherit = { "--lcars-element-color": "inherit" };
   return (
     <section
       {...props}
@@ -132,10 +143,33 @@ export function LcarsPanel({
       style={resolveLcarsColorStyle(tone, color, style)}
       className={`lcars-panel ${className}`}
     >
-      <div className="lcars-panel-heading">
-        <Heading id={`${id}-title`}>{title}</Heading>
-        <LcarsBar style={{ "--lcars-element-color": "inherit" }} />
-      </div>
+      {band ? (
+        <div
+          className="lcars-panel-heading"
+          data-variant="band"
+          style={resolveLcarsColorStyle(band.tone ?? tone)}
+        >
+          <LcarsCap end="start" style={inherit} className="lcars-band-cap" />
+          {band.index != null && (
+            <span className="lcars-band-index" aria-hidden="true">
+              {band.index}
+            </span>
+          )}
+          <Heading id={`${id}-title`}>{title}</Heading>
+          <LcarsBar style={inherit} className="lcars-band-fill" />
+          {band.code != null && (
+            <span className="lcars-band-code" data-state={band.codeState ?? "nominal"}>
+              {band.code}
+            </span>
+          )}
+          <LcarsCap end="end" style={inherit} className="lcars-band-cap" />
+        </div>
+      ) : (
+        <div className="lcars-panel-heading">
+          <Heading id={`${id}-title`}>{title}</Heading>
+          <LcarsBar style={inherit} />
+        </div>
+      )}
       {children}
     </section>
   );

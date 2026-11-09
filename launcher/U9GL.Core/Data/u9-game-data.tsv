@@ -2,12 +2,14 @@
 # Rows are folder, file, bytes, SHA-256, build. Folder '.' is the game folder itself.
 # 1.19F is the GOG release.
 # Built 2026-09-20 from a pristine GOG install.
+# The Steam release (2026-11-06) shares every file but u9.exe, which is 1.19F signed by EA: a second u9.exe row.
 #folder	file	bytes	sha256	build
 .	3DfxSpl2.dll	1105408	262c70749ac24b4d3691e39767d3e01b5b4957b9b82768186e5faa58f395ceba	1.19F
 .	ddraw.dll	1671168	f045795c50eb1e5bf93853a32ca00ebe58d47b94da61842558aeecd3f755a502	1.19F
 .	dshow.dll	11308032	8494f6a45bd7015a0ddc0e9285802eae464200973069fc2b329194c40a32d295	1.19F
 .	glide2x.dll	1679360	0ad163eee4b9a15e818cd6861f65b9467f5ec7abdc372683e85500b7aa538974	1.19F
 .	u9.exe	4593152	83915175abaf8a65dab96fc42f1feed24a78f55dc8b28a736b61ffa83314b545	1.19F
+.	u9.exe	4603776	339a5ba8683546363ab8b95c53d3e980dfbd959afe8719b11f2666c4dbd0e152	1.19F
 static	activity.flx	30151	cbaf356952b306a5552f4a3a4cafce5866ad3d84e36d5702ceb4a2ff843f33c9	1.19F
 static	anim.flx	58731040	8fdc2cc8b8b999ce53687891fadb7e8eda427e8ed8f03cec7b77a515fceea972	1.19F
 static	ankh.pal	1024	c627f9865aa5c121340debb8c29ee99cd8439b139b69ff407834f3682f4e2054	1.19F

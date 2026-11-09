@@ -15,8 +15,10 @@
 #include "lightwatch.h"
 #include "flyerfix.h"
 #include "npcprobe.h"
+#include "actorwatch.h"
 #include "travelprobe.h"
 #include "trigprobe.h"
+#include "playerwatch.h"
 #include "meshprobe.h"
 #include "meshstat.h"
 
@@ -611,6 +613,7 @@ void u9probe_actor_tick(void *self)
     census_tick();
     fa_tick();
     u9npc_tick();
+    u9actor_tick();
     u9mesh_tick();
     u9meshstat_tick();
     u9bird_tick();
@@ -644,6 +647,7 @@ void u9probe_init(void)
     if (u9cfg_int("diag_travel_watch", 0)) u9travel_install();
     if (u9cfg_int("diag_trigger_watch", 0)) u9trig_install(0);
     else if (u9cfg_int("diag_shrine_watch", 0)) u9trig_install(1);
+    u9player_watch_install();
     u9mesh_install();
     u9meshstat_install();
 
@@ -699,8 +703,10 @@ void u9probe_report(void)
     u9bird_report();
     u9light_report();
     u9npc_report();
+    u9actor_report();
     u9travel_report();
     u9trig_report();
+    u9player_watch_report();
     u9mesh_report();
     u9meshstat_report();
     census_report();

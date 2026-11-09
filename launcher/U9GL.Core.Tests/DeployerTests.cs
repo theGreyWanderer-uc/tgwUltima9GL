@@ -64,7 +64,7 @@ public sealed partial class DeployerTests
         var manifest = InstallManifest.Load(_folder.Manifest)!;
         Assert.AreEqual("0.1.0", manifest.Version);
         Assert.AreEqual("dsound.dll", manifest.Files.Single().Path);
-        var edit = manifest.OptionsEdits.Single();
+        var edit = manifest.OptionsEdits.Single(e => e.Key == "Game Rasterizer");
         Assert.AreEqual(("Game Rasterizer", "2", "3", "install"), (edit.Key, edit.OldValue, edit.NewValue, edit.Reason));
 
         var optionsBackup = manifest.Backups.Single(b => b.OriginalPath == "Options.ini");
@@ -81,6 +81,30 @@ public sealed partial class DeployerTests
             string.Join(", ", state.Components.Select(c => $"{c.Name}={c.Status}")));
         Assert.AreEqual(ComponentStatus.Missing, state.Component(Deployer.LargeAddressRow).Status);
         Assert.AreEqual("3", state.GameRasterizer);
+    }
+
+    [TestMethod]
+    public void AFirstInstallWritesTheLauncherDefaultsIntoOptionsIni()
+    {
+        File.WriteAllBytes(_folder.OptionsIni, Encoding.Latin1.GetBytes(OptionsText
+            + "[Performance]\r\nMiddleClippingPlaneDistance=3000\r\nFarClippingPlaneDistance=5000\r\n"));
+
+        NewDeployer().Install();
+        var ini = IniDocument.Load(_folder.OptionsIni);
+        Assert.AreEqual("4000", ini.Get("Performance", "MiddleClippingPlaneDistance"));
+        Assert.AreEqual(SettingsCatalog.ById("draw-distance").Default.Values["FarClippingPlaneDistance"],
+            ini.Get("Performance", "FarClippingPlaneDistance"));
+        Assert.AreEqual(SettingsCatalog.ById("windows-key").Default.Values["DisableWinKey"],
+            ini.Get("Game", "DisableWinKey"));
+        Assert.IsNull(ini.Get("Performance", "CullStartDist"), "a missing key is not added");
+        Assert.AreEqual("640", ini.Get("Game", "GameScreenWidth"), "the resolution is the player's");
+        var edit = InstallManifest.Load(_folder.Manifest)!.OptionsEdits.Single(e => e.Key == "MiddleClippingPlaneDistance");
+        Assert.AreEqual(("3000", "4000"), (edit.OldValue, edit.NewValue));
+
+        ini.Set("Performance", "MiddleClippingPlaneDistance", "6000");
+        File.WriteAllBytes(_folder.OptionsIni, ini.ToBytes());
+        NewDeployer().Install();
+        Assert.AreEqual("6000", IniDocument.Load(_folder.OptionsIni).Get("Performance", "MiddleClippingPlaneDistance"));
     }
 
     [TestMethod]

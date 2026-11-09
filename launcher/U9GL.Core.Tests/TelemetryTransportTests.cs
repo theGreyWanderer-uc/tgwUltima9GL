@@ -59,7 +59,8 @@ public sealed class TelemetryTransportTests
                 CollectionAssert.AreEqual(new[] { n, n * 4096, n * 2, n }, s.Group(TelemetrySchema.Resources)!.Values.ToArray());
                 CollectionAssert.AreEqual(new[] { n * 1024, n * 512, n * 2048, n * 1024 }, s.Group(TelemetrySchema.Memory)!.Values.ToArray());
                 Assert.AreEqual(1, s.SkippedGroups);
-                Assert.HasCount(17, s.Groups);
+                Assert.HasCount(18, s.Groups);
+                Assert.AreEqual(5UL, s.Group(TelemetrySchema.Player)!["classId"]);
                 Assert.HasCount(40, s.Group(TelemetrySchema.TextureList)!.Array);
                 Assert.HasCount(25, s.Group(TelemetrySchema.MeshList)!.Array);
                 Assert.HasCount(30, s.Group(TelemetrySchema.AreaCells)!.Array);

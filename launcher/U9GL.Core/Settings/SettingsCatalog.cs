@@ -44,6 +44,14 @@ public static class SettingsCatalog
     public static IEnumerable<KeyValuePair<string, string>> InitialU9glValues() =>
         ValuesOf(All.Where(d => d.Page != SettingPage.Managed));
 
+    public static IEnumerable<(string Section, string Key, string Value)> InitialOptionsValues(
+        Func<string, string, string?> current) =>
+        All.Where(d => d.Page is SettingPage.Graphics or SettingPage.Game
+                       && d.Keys.Count == 1 && d.Keys[0].File == SettingFile.OptionsIni)
+           .Select(d => (Key: d.Keys[0], d, Now: current(d.Keys[0].Section!, d.Keys[0].Key)))
+           .Where(x => x.Now != null && x.Now != x.d.Default.Values[x.Key.Key])
+           .Select(x => (x.Key.Section!, x.Key.Key, x.d.Default.Values[x.Key.Key]));
+
     public const string TelemetryFeedKey = "diag_telemetry";
 
     public static bool IsManaged(SettingFile file, string key) =>
@@ -133,7 +141,7 @@ public static class SettingsCatalog
                  One("Centre", "gl_window_anchor", "5", Works), One("Centre right", "gl_window_anchor", "6", Works),
                  One("Bottom left", "gl_window_anchor", "1", Works), One("Bottom centre", "gl_window_anchor", "2", Works),
                  One("Bottom right", "gl_window_anchor", "3", Works)],
-                "Top left"),
+                "Centre"),
 
             new("stretch", SettingPage.Display, "Stretch to fill",
                 "With the whole-monitor window, stretch the picture to fill it, interface included.",
@@ -192,13 +200,37 @@ public static class SettingsCatalog
                  One("Off", "gl_night_grade", "0", Works)],
                 "On"),
 
+            new("underwater-haze", SettingPage.Graphics, "Underwater haze",
+                "Under the water, the view fades into a deep blue with distance, red first, and grows darker "
+                + "the deeper you are. The original shows the water as clear as air.",
+                [U9gl("gl_under_fog")],
+                [One("On", "gl_under_fog", "1", Works),
+                 One("Off (the original)", "gl_under_fog", "0", Works)],
+                "On"),
+
+            new("underwater-caustics", SettingPage.Graphics, "Underwater caustics",
+                "Under the water, a moving web of light from the ripples above plays over the seabed and "
+                + "whatever stands on it, softer the deeper it lies. Not in caves and dungeons.",
+                [U9gl("gl_under_caustics")],
+                [One("On", "gl_under_caustics", "1", Works),
+                 One("Off", "gl_under_caustics", "0", Works)],
+                "On"),
+
+            new("underwater-shafts", SettingPage.Graphics, "Underwater light shafts",
+                "Under the water, sunlight slants down through the surface in beams that follow the sun and "
+                + "fade at dusk, in storms and at night.",
+                [U9gl("gl_under_shafts")],
+                [One("On", "gl_under_shafts", "1", Works),
+                 One("Off", "gl_under_shafts", "0", Works)],
+                "On"),
+
             new("anti-aliasing", SettingPage.Graphics, "Anti-aliasing",
                 "Draws the world at twice the width and height and averages it down, so edges, leaves and "
                 + "distant ground stop shimmering. Costs drawing time.",
                 [U9gl("gl_ss_scale")],
                 [One("Off", "gl_ss_scale", "1", Works),
                  One("On (2× supersampling)", "gl_ss_scale", "2", Works)],
-                "Off"),
+                "On (2× supersampling)"),
 
             new("draw-distance", SettingPage.Graphics, "Draw distance",
                 "How far the world is drawn above ground. Further costs drawing time.",
@@ -252,7 +284,7 @@ public static class SettingsCatalog
                 [U9gl("texture_override")],
                 [One("Off", "texture_override", "0", Works),
                  One("On", "texture_override", "1", Works)],
-                "Off"),
+                "On"),
 
             new("texture-detail", SettingPage.Graphics, "Texture detail",
                 "The game's own textures load at full size. Replacements always draw at their own size.",
@@ -265,7 +297,7 @@ public static class SettingsCatalog
                 [Game("DisableWinKey")],
                 [One("Works as normal", "DisableWinKey", "0", Works),
                  One("Disabled while playing", "DisableWinKey", "1", Works)],
-                "Works as normal"),
+                "Disabled while playing"),
 
             new("screenshot", SettingPage.Game, "Screenshot (Ctrl+P)",
                 "What Ctrl+P saves into the game folder. Print Screen is left to Windows; Ctrl+F9 still "
@@ -276,14 +308,14 @@ public static class SettingsCatalog
                  One("The finished picture (PNG)", "gl_screenshot", "2", Works),
                  One("The finished picture, as the game's TGA", "gl_screenshot", "3", Works),
                  One("Both PNGs, before and after, to compare", "gl_screenshot", "4", Works)],
-                "Off"),
+                "The finished picture (PNG)"),
 
             new("gold-cap", SettingPage.Game, "Gold limit",
                 "The most gold the Avatar can carry. Past 9,999 the backpack shows thousands: 12,345 reads 12.",
                 [U9gl("gold_cap")],
                 [One("9,999 (the original)", "gold_cap", "9999", Works),
                  One("999,999", "gold_cap", "999999", Works)],
-                "9,999 (the original)"),
+                "999,999"),
 
             new("backpack", SettingPage.Game, "Backpack and bag",
                 "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold "
@@ -293,6 +325,15 @@ public static class SettingsCatalog
                  Backpack("Free placement, up to 1,024 items", "1024", "1", Works),
                  Backpack("Free placement, up to 4,096 items", "4096", "1", Works)],
                 "Original grid (20 items, bag 9)"),
+
+            new("halberd", SettingPage.Game, "Usable halberds",
+                "The game has a finished halberd, a staff weapon with its own icon, but leaves every "
+                + "halberd in the world as scenery. On lets you pick them up, carry them and fight with "
+                + "them, with the battleaxe's sounds. Off is the original game.",
+                [U9gl("restore_halberd")],
+                [One("On", "restore_halberd", "1", Works),
+                 One("Off (the original)", "restore_halberd", "0", Works)],
+                "On"),
 
             new("combat-run", SettingPage.Game, "Enemies in combat",
                 "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. "
@@ -308,7 +349,7 @@ public static class SettingsCatalog
                 [U9gl("large_address")],
                 [One("Off (the original, 2 GB)", "large_address", "0", Works),
                  One("On (4 GB)", "large_address", "1", Works)],
-                "Off (the original, 2 GB)"),
+                "On (4 GB)"),
 
             new("portal-range", SettingPage.Game, "Seeing into buildings",
                 "How far from an open building its contents still show. At 700 they can vanish from "
@@ -354,9 +395,32 @@ public static class SettingsCatalog
             Fix("fix-spell-kind", "fix_spell_kind", "Rings of Fire are not mistaken for spells",
                 $"Prevents the {Faults.F19.InSentence}. When two Rings of Fire overlap, the game no longer "
                 + "takes a burning ring for a spell and deletes it as one.", Works),
+            Fix("fix-bad-models", "fix_bad_models", "Skip models the game cannot read",
+                $"Prevents the {Faults.F23.InSentence}. A handful of models in the game's data are "
+                + "stored in a layout the game cannot read, and asking for one crashes it. With this "
+                + "fix the object is drawn as the game's plain placeholder instead.", Works),
+            FixGroup("fix-magenta-key", ["fix_magenta_key"], "See-through flames and effects",
+                "Some of the game's flames, sparks, lava bursts and other effects were painted on a "
+                + "purple background meant to be see-through, which the game never cuts out. U9GL "
+                + "cuts it out, so they show without purple boxes around them.",
+                Works, "the purple boxes around some flames and effects come back"),
+            Fix("fix-sound-slot", "fix_sound_slot", "Sounds survive a map change",
+                $"Prevents the {Faults.F24.InSentence}. When a map change unloads the object a sound "
+                + "belongs to, the game measures the sound from where the object was last placed "
+                + "instead of crashing.", Works),
+            Fix("fix-line-hit", "fix_line_hit", "Collision checks at a map's edge",
+                $"Prevents the {Faults.F25.InSentence}. A collision check that finds no real object "
+                + "past the edge of a map is treated as finding nothing, instead of crashing the game.", Works),
             Fix("fix-shrine-reveal", "fix_shrine_reveal", "Shrine cleansings always finish",
                 $"Prevents the {Faults.F18.InSentence}. If the shrine's own rune or item has been picked up, "
                 + "moved or left on another map, the cleansing brings it back to the altar, or makes a new one.", Works),
+            FixGroup("fix-lett-book", ["fix_lett_book"], "Lett's book teaches from the backpack",
+                "Sir William Lett's book in his tomb teaches the last two-handed move, but the game "
+                + "only lets it when the book is read lying on the ground, and never says whether it "
+                + "worked. With this on it teaches the same way when read from the backpack, and when "
+                + "the book is closed a line says whether you learned it. The lesson still needs Adept "
+                + "dexterity and Journeyman two-handed skill.",
+                Works, "the original: the book teaches only when read lying on the ground"),
             FixGroup("fix-rain-splash", ["fix_rain_splash"], "Keep rain splashes out of buildings",
                 "In rain, splashes could show on the floor inside a building, as in Lord British's "
                 + "throne room. With this on, rain that falls into a room makes no splash.",
@@ -456,8 +520,6 @@ public static class SettingsCatalog
                 "The composed textures used each frame, logged when the picture changes.", false),
             Diag("draw_watch_frames", "Composed draw order",
                 "For the first 900 frames, the composed textures in the order they are drawn.", false, on: "900"),
-            Diag("stream_actors", "Actor table stream",
-                "A line for every actor, every 300 frames.", false, on: "300"),
             Diag("dump_frame", "Frame snapshot",
                 "Saves frame 600 as a picture in %TEMP%. Ctrl+F9 saves one at any time.", false, on: "600"),
             Diag("ui_watch", "Journal and interface",
@@ -466,8 +528,8 @@ public static class SettingsCatalog
                 "The time each burst of texture uploads takes. High volume.", false),
             Diag("dump_new_blocks", "New actor memory",
                 "Dumps the first 80 new actors' memory as it is handed out, before they are built.", false, on: "80"),
-            Diag("diag_census", "Actor census",
-                "The whole actor table every 1,200 ticks; the last one is printed when the game quits.", false),
+            Diag("diag_actor_watch", "Actors",
+                "Every creature and NPC near you, of any kind: what it is, where it is, whom it fights, its state and health, and what changes inside it.", false),
             Diag("dump_textures", "Texture dump",
                 "Saves every texture the game draws to %TEMP%\\u9gl_textures, colour and alpha, once each.", false),
             Diag("diag_teleport", "Teleport crash hunt",
@@ -497,8 +559,14 @@ public static class SettingsCatalog
                 "Changes to NPCs' levels, health and mana, and every creature spawned. Dumps the table at start and exit.", false),
             Diag("diag_travel_watch", "Map changes",
                 "Every map load - pad, door or moongate - with where the Avatar was before and after.", false),
+            Diag("diag_linehit_scan", "Collision lists",
+                "Every 30 frames, checks the game's collision lists for shapes left behind or pointing at objects that are gone.", false),
             Diag("diag_trigger_watch", "Triggers",
                 "Every trigger the game runs - which object, which trigger and what started it - and every quest flag it sets or tests.", false),
+            Diag("diag_player_watch", "The Avatar",
+                "Every change to the Avatar: attributes, hit points, mana and breath, armour, effects, weapon and "
+                + "equipment, weapon skills and spells, class and shrines - with who raised a skill or taught a "
+                + "spell, and each narration the game plays (the Lett book's lesson among them).", false),
             Diag("diag_shrine_watch", "Shrine cleansings",
                 "Each shrine cleansing: the rune, glyph and items it holds, every stage it passes, and a warning when "
                 + "its rune or item is missing. Also the triggers run at a shrine.", false),

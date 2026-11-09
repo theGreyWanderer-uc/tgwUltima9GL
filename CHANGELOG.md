@@ -2,7 +2,39 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
-## 0.5.4 (2026-11-04)
+## 0.5.5 (2026-11-09)
+
+- **Every creature fights back.** Some townsfolk and creatures could chase you and never strike, a
+  bug in the original game. They now fight as they should (Fixes page: "Start new actors with
+  clean memory").
+- **Usable halberds.** The game has a finished halberd but leaves every one as scenery. Now you
+  can pick them up, carry them and fight with them (Game page: "Usable halberds").
+- **Under the water.** The view fades into a deep blue with distance and grows darker with depth;
+  light ripples over the bed and sunlight slants down through the surface (Graphics page:
+  "Underwater haze", "Underwater caustics", "Underwater light shafts").
+- **The Black Gate hall glows.** The Guardian, the small columns' glyphs, the Black Gate itself,
+  the mirror, the throne and the floor have their own glow and light. Black walls stay black near
+  a torch.
+- **The gold count says K and M** past 9,999 and 999,999, in the purse's own lettering.
+- **Fixed: purple boxes round flames and effects** (a burning oil flask, flame arrows, fireballs,
+  sparkles and more), a bug in the original game (Fixes page: "See-through flames and effects").
+- **Fixed: crashes** at the edge of a map that does not wrap, when a sound's object was unloaded
+  by a map change, and on sixteen models the game cannot read (Fixes page: "Collision checks at a
+  map's edge", "Sounds survive a map change", "Skip models the game cannot read").
+- **Fixed: Sir William Lett's book** now teaches from the backpack too, not only when read lying
+  on the ground (Fixes page: "Lett's book teaches from the backpack").
+- **The Steam release is supported.**
+- **New installs start with smoother edges** (anti-aliasing on), Ctrl+P saving a PNG and the
+  backpack on the original grid.
+- **Web dashboard: the Player page.** Hit points, mana and breath, attributes, weapon skills and
+  moves, class and virtue, the shrines and the Codex, equipment, gold and arrows. The spellbook is a
+  grid showing each spell's mana cost and whether it is running, castable or out of reach, and
+  status effects show what the game is really doing to you: poison, invisibility, sleep,
+  paralysis, stun and knockdown, and the spells running on you. Every section has a heading bar
+  with its headline value.
+- **Diagnostics are off in a new install.**
+- **A download without the .NET runtime** for players who have .NET 10 installed.
+
 
 - **Smoother edges.** Edges are no longer stair-stepped, and leaves and fences shimmer less as
   the camera moves; the belt, bars and compass stay sharp. For the steadiest picture, the

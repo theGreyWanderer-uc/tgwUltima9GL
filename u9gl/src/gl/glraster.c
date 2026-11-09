@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "glpost.h"
+#include "gltwosided.h"
 #include "glaa.h"
 #include "glrays.h"
 #include "glshadow.h"
@@ -299,11 +300,12 @@ static float depth_of(float z)
 
 const char *u9gl_toggle_tex_labels(void)
 {
-    g_labelMode = (g_labelMode + 1) % 3;
+    g_labelMode = (g_labelMode + 1) % 4;
     g_labelTex = g_labelMode == 1;
     g_labelMinArea = u9cfg_int("label_min_area", 900);
     return g_labelMode == 1 ? "texture labels - id/frame drawn over each run"
          : g_labelMode == 2 ? "light markers - a yellow square on each light's point"
+         : g_labelMode == 3 ? "water zones - a blue box round each breathable space; deep water outside"
                             : "off";
 }
 
@@ -809,6 +811,8 @@ static void push(const U9Vertex *v, float alpha)
     if (v->z > g_zMax) g_zMax = v->z;
 }
 
+const void *u9gl_current_renderer(void) { return g_renderer; }
+
 void u9gl_tri(const void *renderer,
               const U9Vertex *v0, const U9Vertex *v1, const U9Vertex *v2,
               float alpha, const void *mat)
@@ -818,6 +822,16 @@ void u9gl_tri(const void *renderer,
     if (g_count + 3 > U9GL_MAX_VERTS) { g_dropped++; return; }
     if (!g_runCount) run_begin();
     material_set(mat);
+
+    {
+        GlRun *r = &g_runs[g_runCount - 1];
+        if (r->deferred == 1 && r->count) {
+            float tz = v0->z;
+            if (v1->z < tz) tz = v1->z;
+            if (v2->z < tz) tz = v2->z;
+            if (depth_bucket(tz) != depth_bucket(r->zMin)) run_begin();
+        }
+    }
 
     push(v0, alpha);
     push(v1, alpha);
@@ -1127,6 +1141,17 @@ static int glare_colour(const GlRun *r)
 static int interface_mark(const GlRun *r, float engineW, float engineH)
 {
     if (r->src == 34 && r->x1 - r->x0 >= engineW * 0.9f && r->y1 - r->y0 >= engineH * 0.9f) return 0;
+    if (r->texId < 0 && r->x1 - r->x0 >= engineW * 0.9f && r->y1 - r->y0 >= engineH * 0.9f) {
+        static unsigned logged;
+        if (logged < 4) {
+            const unsigned char *c = g_verts[r->first].rgba;
+            logged++;
+            u9log_line("GLWASH not marked as interface: untextured, %.0fx%.0f of %.0fx%.0f, src %d, z %.2f, rgba %u,%u,%u,%u",
+                       (double)(r->x1 - r->x0), (double)(r->y1 - r->y0), (double)engineW, (double)engineH,
+                       r->src, (double)r->zMin, c[0], c[1], c[2], c[3]);
+        }
+        return 0;
+    }
     if (glare_colour(r)) return 0;
     return interface_run(r);
 }
@@ -1226,6 +1251,7 @@ int  u9glpost_bloom_lava(void);
 float u9glpost_bloom_share(int texId, int effect, int additive);
 const char *u9glpost_bloom_why(void);
 float u9glpost_moon_bright(void);
+float u9glpost_guardian_bright(int texId);
 float u9glpost_moon_halo(void);
 float u9glpost_moon_bloom(int halo);
 float u9glpost_moon_phase(int cls);
@@ -1235,6 +1261,7 @@ void  u9glpost_bloom_mask(int on);
 int   u9glpost_night_graded(int texId);
 void u9gl_wbuf_rgb(float scale);
 void u9gl_wbuf_selflit(int on);
+void u9gl_wbuf_slack(int on);
 void u9gl_wbuf_ui(int on);
 void u9gl_wbuf_mark(int on);
 int  u9glpost_water_mark_begin(void);
@@ -1242,6 +1269,7 @@ void u9glpost_water_mark_end(void);
 void u9gl_wbuf_set_jitter(float x, float y);
 void u9gl_wbuf_jitter(int on);
 float u9fx_soot_scale(int texId);
+float u9fx_glow_gain(int texId);
 void u9gl_wbuf_alpha(float scale);
 void u9gl_wbuf_rune(unsigned mask, const float tint[3]);
 unsigned u9fx_rune_mask(int texId, unsigned glTex);
@@ -1251,6 +1279,7 @@ void u9gl_wbuf_run(int textured, int alphaTest, float alphaRef, int lightable, i
                    float fade);
 float u9glpost_effect_fade(void);
 int   u9glpost_effect_depth_write(void);
+int   u9glpost_depth_glide(void);
 void u9gl_wbuf_end(void);
 
 static U9FrameView g_view;
@@ -1261,6 +1290,8 @@ int u9gl_frame_view(U9FrameView *out)
     *out = g_view;
     return 1;
 }
+
+static int run_upright(const GlRun *r);
 
 int u9gl_sheet_measure(int (*listed)(int texId), float lo[3], float hi[3], float *meanZ,
                        float rgba[4], unsigned *tris)
@@ -1273,7 +1304,7 @@ int u9gl_sheet_measure(int (*listed)(int texId), float lo[3], float hi[3], float
     *tris = 0;
     for (i = 0; i < g_lastRunCount; i++) {
         const GlRun *r = &g_lastRuns[i];
-        if (!r->count || !listed(r->texId)) continue;
+        if (!r->count || !listed(r->texId) || run_upright(r)) continue;
         *tris += r->count / 3;
         for (t = r->first; t < r->first + r->count; t++) {
             const GlVert *a = &g_verts[t];
@@ -1402,13 +1433,14 @@ void u9gl_pick_report(void (*out)(const char *fmt, ...))
     for (k = 0; k < nh && k < 8; k++) {
         const GlRun *r = &g_lastRuns[hit[k].run];
         u9log_line("GLPICK %d: tex %d/%d at eye depth %.0f - %u triangles, fmt 0x%02X, vertex rgba %.0f,%.0f,%.0f,%.0f, fog %.2f, gl tex %u, "
-                   "flush %u, drawn %u of the frame, alpha raw %u..%u mean %u, bloom %.2f (%s), %s%s%s%s", k + 1, r->texId,
+                   "flush %u, drawn %u of the frame, alpha raw %u..%u mean %u, bloom %.2f (%s), %s%s%s%s%s", k + 1, r->texId,
                    r->texId2, (double)(1.0f / hit[k].q), r->count / 3, r->texFmt,
                    (double)hit[k].c[0], (double)hit[k].c[1], (double)hit[k].c[2], (double)hit[k].c[3], (double)hit[k].c[4], r->glTex, r->epoch, r->drawPos,
                    r->aRawMin, r->aRawMax, r->aN ? r->aSum / r->aN : 0u, (double)r->bloomShare, r->bloomWhy ? r->bloomWhy : "?",
                    r->blendAdd ? "additive" : r->deferred ? "translucent (sorted)" : "opaque",
                    r->depthWrite ? ", writes depth" : "", r->alphaTest || r->chroma ? ", cutout" : "",
-                   r->texId == U9TEX_WATER ? " - WATER (49)" : "");
+                   r->texId == U9TEX_WATER ? " - WATER (49)" : "",
+                   u9gl_two_sided_tex(r->texId) ? ", drawn from both sides (gl_two_sided_textures)" : "");
         if (r->glTex) {
             GLint tw = 0, th = 0, was = 0;
             glGetIntegerv(GL_TEXTURE_BINDING_2D, &was);
@@ -1468,6 +1500,105 @@ void u9gl_pick_report(void (*out)(const char *fmt, ...))
             out("   moon halo: strength %.0f%%, bloom %.0f%% (the game fades it by phase itself)",
                 (double)(u9glpost_moon_halo() * 100.0f), (double)(u9glpost_moon_bloom_setting(1) * 100.0f));
         }
+    }
+}
+
+static float glide_step(float w)
+{
+    return ldexpf(1.0f, (int)floorf(log2f(w > 1.0f ? w : 1.0f)) - 12);
+}
+
+static int run_writes_depth(const GlRun *r)
+{
+    return r->depthWrite && !r->blendAdd && !r->deferred;
+}
+
+void u9gl_pick_ties(void (*out)(const char *fmt, ...))
+{
+    typedef struct { unsigned a, b; unsigned n; float dmin, dmax, w; } Pair;
+    Pair pr[48];
+    int np = 0, k, col;
+    float px, py;
+    unsigned samples = 0;
+    if (!u9gl_reticle_centre(&px, &py)) { out("pick ties: no reticle drawn this frame"); return; }
+    for (col = -1; col <= 1; col++) {
+        float sx = px + (float)col * 60.0f;
+        int sy;
+        for (sy = -120; sy <= 120; sy++) {
+            float y = py + (float)sy;
+            unsigned hr[48], ht[48];
+            float hq[48];
+            int nh = 0, i2, j2;
+            unsigned i, t;
+            for (i = 0; i < g_lastRunCount && nh < 48; i++) {
+                const GlRun *r = &g_lastRuns[i];
+                if (!r->count || r->texId == 1900 || r->zMin <= 10.0f || !r->depthTest) continue;
+                if (sx < r->x0 || sx > r->x1 || y < r->y0 || y > r->y1) continue;
+                for (t = r->first; t + 2 < r->first + r->count && nh < 48; t += 3) {
+                    const GlVert *a = &g_verts[t], *b = &g_verts[t + 1], *c = &g_verts[t + 2];
+                    float d = (b->y - c->y) * (a->x - c->x) + (c->x - b->x) * (a->y - c->y), wa, wb, wc, q;
+                    if (d > -1e-6f && d < 1e-6f) continue;
+                    wa = ((b->y - c->y) * (sx - c->x) + (c->x - b->x) * (y - c->y)) / d;
+                    wb = ((c->y - a->y) * (sx - c->x) + (a->x - c->x) * (y - c->y)) / d;
+                    wc = 1.0f - wa - wb;
+                    if (wa < 0.0f || wb < 0.0f || wc < 0.0f) continue;
+                    q = wa * a->q + wb * b->q + wc * c->q;
+                    if (q > 0.0f) { hr[nh] = i; ht[nh] = t; hq[nh] = q; nh++; }
+                }
+            }
+            samples++;
+            for (i2 = 0; i2 < nh; i2++)
+                for (j2 = 0; j2 < nh; j2++) {
+                    const GlRun *ra = &g_lastRuns[hr[i2]], *rb = &g_lastRuns[hr[j2]];
+                    float wa = 1.0f / hq[i2], wb = 1.0f / hq[j2], dw = wb - wa;
+                    int p;
+                    if (i2 == j2) continue;
+                    if (hr[i2] == hr[j2] ? ht[i2] >= ht[j2] : ra->drawPos >= rb->drawPos) continue;
+                    if (hr[i2] == hr[j2]) {
+                        int u, v, shared = 0;
+                        for (u = 0; u < 3; u++) for (v = 0; v < 3; v++)
+                            if (g_verts[ht[i2] + u].x == g_verts[ht[j2] + v].x && g_verts[ht[i2] + u].y == g_verts[ht[j2] + v].y) shared = 1;
+                        if (shared) continue;
+                    }
+                    if (!run_writes_depth(ra)) continue;
+                    { float st = glide_step(wa < wb ? wa : wb); if (dw < -16.0f * st || dw > 16.0f * st) continue; }
+                    for (p = 0; p < np; p++) if (pr[p].a == hr[i2] && pr[p].b == hr[j2]) break;
+                    if (p == np) {
+                        if (np == 48) continue;
+                        pr[np].a = hr[i2]; pr[np].b = hr[j2]; pr[np].n = 0;
+                        pr[np].dmin = 1e9f; pr[np].dmax = -1e9f; pr[np].w = wa;
+                        np++;
+                    }
+                    pr[p].n++;
+                    if (dw < pr[p].dmin) pr[p].dmin = dw;
+                    if (dw > pr[p].dmax) pr[p].dmax = dw;
+                }
+        }
+    }
+    if (!np) {
+        out("pick ties: none in %u points round the reticle (depth glide %s)", samples, u9glpost_depth_glide() ? "on" : "off");
+        u9log_line("GLTIES none in %u points (depth glide %s)", samples, u9glpost_depth_glide() ? "on" : "off");
+        return;
+    }
+    for (k = 1; k < np; k++) {
+        Pair x = pr[k];
+        int m = k;
+        while (m > 0 && pr[m - 1].n < x.n) { pr[m] = pr[m - 1]; m--; }
+        pr[m] = x;
+    }
+    out("pick ties: %d pairs within 16 steps either way in %u points (depth glide %s), most first:", np, samples,
+        u9glpost_depth_glide() ? "on" : "off");
+    for (k = 0; k < np && k < 8; k++) {
+        const GlRun *a = &g_lastRuns[pr[k].a], *b = &g_lastRuns[pr[k].b];
+        const char *ka = a->blendAdd ? "additive" : a->deferred ? "translucent" : "opaque";
+        const char *kb = b->blendAdd ? "additive" : b->deferred ? "translucent" : "opaque";
+        out("%d  %u pts  tex %d/%d (%s) then %d/%d (%s)%s  at %.0f, apart %.3f-%.3f (step %.3f)", k + 1, pr[k].n,
+            a->texId, a->texId2, ka, b->texId, b->texId2, kb, pr[k].a == pr[k].b ? " SAME RUN" : "", (double)pr[k].w,
+            (double)pr[k].dmin, (double)pr[k].dmax, (double)glide_step(pr[k].w));
+        u9log_line("GLTIES %d: %u pts, tex %d/%d %s fmt 0x%02X flags 0x%04X src %d pos %u, then tex %d/%d %s%s fmt 0x%02X flags 0x%04X src %d pos %u; at %.0f apart %.3f-%.3f, step %.3f",
+                   k + 1, pr[k].n, a->texId, a->texId2, ka, a->texFmt, a->flags, a->src, a->drawPos,
+                   b->texId, b->texId2, kb, run_writes_depth(b) ? " writes depth" : "", b->texFmt, b->flags, b->src,
+                   b->drawPos, (double)pr[k].w, (double)pr[k].dmin, (double)pr[k].dmax, (double)glide_step(pr[k].w));
     }
 }
 
@@ -1663,6 +1794,53 @@ static void capture_view(unsigned engineW, unsigned engineH, int vx, int vy, int
     g_view.valid = 1;
 }
 
+static int run_extent(const GlRun *r, float lo[3], float hi[3])
+{
+    unsigned t;
+    int k, n = 0;
+    for (k = 0; k < 3; k++) { lo[k] = 1e30f; hi[k] = -1e30f; }
+    if (!g_view.valid || !r->count) return 0;
+    for (t = r->first; t < r->first + r->count; t++) {
+        const GlVert *a = &g_verts[t];
+        float w, e[3], wp;
+        if (a->q == 0.0f) continue;
+        w = 1.0f / a->q;
+        e[0] = (a->x - g_view.cx) * w / g_view.sx;
+        e[1] = w;
+        e[2] = (g_view.cy - a->y) * w / g_view.sy;
+        for (k = 0; k < 3; k++) {
+            wp = g_view.m[k * 4] * e[0] + g_view.m[k * 4 + 1] * e[1] + g_view.m[k * 4 + 2] * e[2] + g_view.m[k * 4 + 3];
+            if (wp < lo[k]) lo[k] = wp;
+            if (wp > hi[k]) hi[k] = wp;
+        }
+        n++;
+    }
+    return n >= 3;
+}
+
+static int extent_upright(const float lo[3], const float hi[3])
+{
+    float zs = hi[2] - lo[2], gs = hi[0] - lo[0] > hi[1] - lo[1] ? hi[0] - lo[0] : hi[1] - lo[1];
+    return zs > 100.0f && zs > 0.5f * gs;
+}
+
+static int run_upright(const GlRun *r)
+{
+    static int on = -1;
+    float lo[3], hi[3];
+    if (on < 0) on = u9cfg_int("gl_fog_volume_upright", 0);
+    return on && run_extent(r, lo, hi) && extent_upright(lo, hi);
+}
+
+static int gate_run(const GlRun *r)
+{
+    float lo[3], hi[3], c[3];
+    int k;
+    if (!u9fx_gate_tex(r->texId) || !run_extent(r, lo, hi) || !extent_upright(lo, hi)) return 0;
+    for (k = 0; k < 3; k++) c[k] = 0.5f * (lo[k] + hi[k]);
+    return u9fx_gate_here(c);
+}
+
 void u9gl_flush_frame(unsigned engineW, unsigned engineH)
 {
     static int announced;
@@ -1788,7 +1966,8 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
             if (!g_useGeom) continue;
             if (g_runs[i].texId == U9TEX_BLOB_SHADOW && u9shadow_hide_blob()) continue;
             if (g_nHide && hidden_tex(g_runs[i].texId)) { g_hiddenRuns++; continue; }
-            if (u9fog_hides(g_runs[i].texId)) continue;
+            if (u9fog_hides(g_runs[i].texId) && !run_upright(&g_runs[i]))
+                continue;
             if (!glare_scale(&g_runs[i])) continue;
             if (u9beam_hides(g_runs[i].texId)) {
                 g_runs[i].glTex = g_useTex ? u9gl_texture_for(g_renderer, g_runs[i].mat, g_runs[i].texId,
@@ -1846,6 +2025,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
                          !(g_runs[i].texFmt == 0x02 && !u9glpost_effect_depth_write() &&
                            g_runs[i].src != 34 && g_runs[i].zMin > 10.0f && !near_ui(&g_runs[i]));
                 glDepthMask(dw ? GL_TRUE : GL_FALSE);
+                if (wbuf) u9gl_wbuf_slack(!dw);
                 u9glpost_exact_mask(dw || (wbuf && interface_mark(&g_runs[i], (float)engineW, (float)engineH)));
                 u9glpost_bloom_mask(!(wbuf && interface_mark(&g_runs[i], (float)engineW, (float)engineH)));
             }
@@ -1866,19 +2046,24 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
             bloom = wbuf ? u9glpost_bloom_share(g_runs[i].texId, effect_layer(&g_runs[i]),
                                                 g_runs[i].blendAdd) : 0.0f;
             g_runs[i].bloomWhy = wbuf ? u9glpost_bloom_why() : "no shader";
+            if (wbuf && gate_run(&g_runs[i]))
+                { bloom = u9fx_gate_glow(); g_runs[i].bloomWhy = "black gate"; }
             if (wbuf && moon_disc(g_runs[i].texId))
                 { bloom = u9glpost_moon_bloom(0) * u9glpost_moon_phase(moon_phase(g_runs[i].texId)); g_runs[i].bloomWhy = "moon disc"; }
             else if (wbuf && moon_halo(&g_runs[i])) { bloom = u9glpost_moon_bloom(1); g_runs[i].bloomWhy = "moon halo"; }
             g_runs[i].bloomShare = wbuf ? bloom : -1.0f;
             if (wbuf) u9gl_wbuf_alpha(moon_halo(&g_runs[i]) ? u9glpost_moon_halo()
-                                      : u9fx_soot_scale(g_runs[i].texId));
+                                      : u9fx_soot_scale(g_runs[i].texId)
+                                        * (g_runs[i].blendAdd ? u9fx_glow_gain(g_runs[i].texId) : 1.0f));
             if (wbuf) u9gl_wbuf_rgb(moon_tex(g_runs[i].texId)
                                     ? u9glpost_moon_bright() * u9glpost_moon_phase(moon_phase(g_runs[i].texId))
-                                    : 1.0f);
+                                    : u9glpost_guardian_bright(g_runs[i].texId));
             if (wbuf) {
                 float tint[3] = { 1.0f, 1.0f, 1.0f };
                 unsigned rmask = g_runs[i].glTex ? u9fx_rune_mask(g_runs[i].texId, g_runs[i].glTex) : 0u;
                 if (rmask) u9fx_rune_tint(g_runs[i].texId, tint);
+                else if (g_runs[i].glTex && (rmask = u9fx_glyph_mask(g_runs[i].texId, g_runs[i].glTex)) != 0u)
+                    u9fx_glyph_tint(g_runs[i].texId, tint);
                 u9gl_wbuf_rune(rmask, tint);
             }
             if (wbuf) u9gl_wbuf_selflit(u9lava_is(g_runs[i].texId) && u9lava_glows());
@@ -1930,7 +2115,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
             glDisable(GL_ALPHA_TEST);
-            if (wbuf) { u9gl_wbuf_run(0, 0, 0.0f, 0, 0, 0.0f, 0.0f); u9gl_wbuf_alpha(1.0f); u9gl_wbuf_rgb(1.0f); u9gl_wbuf_rune(0u, NULL); u9gl_wbuf_selflit(0); u9gl_wbuf_ui(0); }
+            if (wbuf) { u9gl_wbuf_run(0, 0, 0.0f, 0, 0, 0.0f, 0.0f); u9gl_wbuf_alpha(1.0f); u9gl_wbuf_rgb(1.0f); u9gl_wbuf_rune(0u, NULL); u9gl_wbuf_selflit(0); u9gl_wbuf_ui(0); u9gl_wbuf_slack(0); }
             for (i = 0; i < g_runCount; i++) {
                 const GlRun *r = &g_runs[i];
                 if (!r->count || r->texId != U9TEX_WATER || !r->deferred || r->deferred == 2 || r->blendAdd)

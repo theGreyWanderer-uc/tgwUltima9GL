@@ -22,6 +22,7 @@
 #include "gleffects.h"
 #include "glsun.h"
 #include "glfog.h"
+#include "glunder.h"
 #include "glaa.h"
 #include "../fix/gold.h"
 #include "regions.h"
@@ -131,7 +132,8 @@ static int    g_waterMarked;
 static unsigned g_waterFrames;
 typedef void (APIENTRY *ColorMaskiFn)(GLuint, GLboolean, GLboolean, GLboolean, GLboolean);
 static ColorMaskiFn fColorMaski;
-static GLint  g_uExact, g_uHaveExact;
+static GLint  g_uExact, g_uHaveExact, g_uDepthView;
+static int    g_depthView;
 static GLint  g_uNrmAcross;
 static int    g_nrmAcross = 1;
 static GLint  g_uSeams;
@@ -192,15 +194,29 @@ static GLint  g_uWater, g_uWaterK;
 static GLint  g_uRefl, g_uReflOn;
 static GLint  g_uWaterFloor;
 static GLint  g_uFogK, g_uFogBox, g_uFogC, g_uFogN;
+static GLint  g_uUnderK, g_uUnderA, g_uUnderC, g_uUnderW, g_uUnderB, g_uUnderS, g_uUnderL, g_uUnderG;
+
+static int    g_dome = 1;
+static int    g_domeBright = 250;
+static int    g_domeReach = 3000;
+static int    g_domeTex[8] = { 6486, 6487 };
+static int    g_domeMap = 9, g_domeRadius = 800;
+static float  g_domeAt[3] = { 36111.0f, 73962.0f, 962.0f };
+static volatile unsigned g_loads;
+static int    g_nDomeTex = 2;
 static int    g_bloom = 1;
 static int    g_bloomLava = 1;
 static int    g_bloomFire = 100;
 static int    g_bloomAdditive = 100;
 static int    g_bloomGlow = 100;
-static int    g_bloomRunes = 500;
+static int    g_bloomRunes = 300;
+static int    g_bloomGlyphs = 300;
 static char   g_bloomGlowList[256];
 static int    g_bloomSurface = 100;
-static char   g_bloomSurfaceList[256];
+static char   g_bloomSurfaceList[512];
+static char   g_guardianList[256];
+static int    g_guardianGlow = 150;
+static int    g_guardianBright = 175;
 static int    g_moonBright = 100;
 static int    g_moonBloom = 100;
 static int    g_moonHalo = 100;
@@ -221,6 +237,7 @@ static int    g_effectDepthWrite = 1;
 static int    g_effectFadeDebug;
 static int    g_effectFullSize;
 static int    g_depthGlide = 1;
+static int    g_depthSlack = 0;
 void u9gl_fade_report(void (*out)(const char *fmt, ...));
 static GLint  g_uSun, g_uSunR, g_uSunU, g_uSunL, g_uSunC, g_uSunK, g_uSunMode;
 static GLint  g_uSunPR, g_uSunPU, g_uSunPL;
@@ -299,6 +316,14 @@ static const char *const k_fragment =
     "uniform vec4  u_fogK;\n"
     "uniform vec4  u_fogBox;\n"
     "uniform vec3  u_fogC;\n"
+    "uniform vec4  u_underK;\n"
+    "uniform vec4  u_underA;\n"
+    "uniform vec3  u_underC;\n"
+    "uniform vec4  u_underW;\n"
+    "uniform float u_underB;\n"
+    "uniform vec4  u_underS;\n"
+    "uniform vec3  u_underL;\n"
+    "uniform vec3  u_underG;\n"
     "uniform vec4  u_fogN;\n"
     "uniform vec2  u_bloomK;\n"
     "uniform sampler2D u_beam;\n"
@@ -357,6 +382,7 @@ static const char *const k_fragment =
     "}\n"
     "uniform sampler2D u_exact;\n"
     "uniform int   u_haveExact;\n"
+    "uniform int   u_depthView;\n"
     "uniform int   u_seams;\n"
     "uniform int   u_nrmAcross;\n"
     "uniform sampler2D u_water;\n"
@@ -745,6 +771,90 @@ static const char *const k_fragment =
     "    if (u_night.w >= 0.0) fc = mix(fc, vec3(dot(fc, vec3(0.299, 0.587, 0.114))), u_night.w) * u_night.xyz;\n"
     "    return c * T + fc * (1.0 - T);\n"
     "}\n"
+    "float caus_cell(vec2 q, float t, float seed) {\n"
+    "    vec2 i = floor(q), f = fract(q);\n"
+    "    float f1 = 8.0, f2 = 8.0;\n"
+    "    for (int y = -1; y <= 1; y++)\n"
+    "        for (int x = -1; x <= 1; x++) {\n"
+    "            vec2 g = vec2(float(x), float(y));\n"
+    "            vec2 h = vec2(fhash(vec3(i + g, seed)), fhash(vec3(i + g, seed + 7.3)));\n"
+    "            vec2 o = 0.5 + 0.38 * sin(t * (0.6 + 0.5 * h.yx) + 6.2831 * h);\n"
+    "            float e = length(g + o - f);\n"
+    "            if (e < f1) { f2 = f1; f1 = e; } else if (e < f2) f2 = e;\n"
+    "        }\n"
+    "    return f2 - f1;\n"
+    "}\n"
+    "float caustics(vec3 P, float pd) {\n"
+    "    float t = u_underW.w;\n"
+    "    vec2 q = P.xy * u_underW.y;\n"
+    "    q += (vec2(fnoise(vec3(q * 0.35, t * 0.15)), fnoise(vec3(q * 0.35 + 17.0, t * 0.15))) - 0.5) * 0.9;\n"
+    "    float e1 = caus_cell(q + vec2(t * 0.05, t * 0.03), t, 1.7);\n"
+    "    float e2 = caus_cell(q * 1.41 + vec2(5.2 - t * 0.04, 1.3 + t * 0.02), t * 1.2, 9.1);\n"
+    "    float wd = 0.07 + pd / (u_underW.z * 4.0);\n"
+    "    float sb = u_underB * 0.12 * (1.0 + 2.0 * pd / u_underW.z);\n"
+    "    float a1 = 1.0 - smoothstep(0.0, wd + sb + fwidth(e1), e1);\n"
+    "    float a2 = 1.0 - smoothstep(0.0, wd + sb + fwidth(e2), e2);\n"
+    "    float pk = mix(1.0, wd / (wd + sb), 0.6);\n"
+    "    return (a1 * a1 + 0.7 * a2 * a2) * pk;\n"
+    "}\n"
+    "float shaft_at(vec2 q, float t) {\n"
+    "    float n = 0.6 * fnoise(vec3(q, t * 0.12)) + 0.4 * fnoise(vec3(q * 2.3 + 5.0, t * 0.2));\n"
+    "    return smoothstep(0.5, 0.85, n);\n"
+    "}\n"
+    "vec3 under_shafts(vec3 C, vec3 dir, float L) {\n"
+    "    float Ls = min(L, u_underS.z);\n"
+    "    if (Ls < 1.0) return vec3(0.0);\n"
+    "    float seg = Ls / 16.0;\n"
+    "    float sigma = u_underK.z > 0.0 ? u_underK.z : 0.0008;\n"
+    "    float dark = u_underK.w > 0.0 ? u_underK.w : sigma;\n"
+    "    vec2 slope = u_underL.xy / max(u_underL.z, 0.2);\n"
+    "    vec3 acc = vec3(0.0);\n"
+    "    for (int i = 0; i < 16; i++) {\n"
+    "        float t = (float(i) + 0.5) * seg;\n"
+    "        vec3 S = C + dir * t;\n"
+    "        float ds = max(u_underK.y - S.z, 0.0);\n"
+    "        float pat = shaft_at((S.xy + slope * ds) * u_underS.y, u_underS.w);\n"
+    "        acc += pat * exp(-u_underA.rgb * (dark * ds + sigma * t));\n"
+    "    }\n"
+    "    float g = max(dot(dir, u_underL), 0.0);\n"
+    "    return acc * (seg * sigma) * (0.35 + 1.65 * g * g * g) * u_underS.x;\n"
+    "}\n"
+    "vec3 under_apply(vec3 c, vec3 eg, vec3 ep, vec3 world, bool sky, vec3 N) {\n"
+    "    vec3 C = vec3(u_m0.w, u_m1.w, u_m2.w);\n"
+    "    vec3 ray = world - C;\n"
+    "    float L = length(ray);\n"
+    "    if (L < 1.0) return c;\n"
+    "    vec3 dir = ray / L;\n"
+    "    if (sky || L > u_underA.w) L = u_underA.w;\n"
+    "    if (dir.z > 1e-4) L = min(L, max(u_underK.y - C.z, 0.0) / dir.z);\n"
+    "    vec3 T = exp(-u_underA.rgb * (u_underK.z * L));\n"
+    "    float pd = max(u_underK.y - (C.z + dir.z * L), 0.0);\n"
+    "    float cd = max(u_underK.y - C.z, 0.0);\n"
+    "    vec3 lit = exp(-u_underA.rgb * (u_underK.w * pd));\n"
+    "    if (u_underW.x > 0.0 && !sky && pd > 0.0) {\n"
+    "        vec3 Nc = dot(N, C - world) < 0.0 ? -N : N;\n"
+    "        float k = u_underW.x * smoothstep(-0.3, 0.8, Nc.z) * smoothstep(0.0, 10.0, pd)\n"
+    "                * exp(-pd * 1.0986 / u_underW.z) * (1.0 - smoothstep(900.0, 2200.0, L));\n"
+    "        if (u_night.w >= 0.0) k *= 1.0 - 0.8 * u_night.w;\n"
+    "        if (k > 0.002) lit *= 1.0 + k * caustics(world, pd);\n"
+    "    }\n"
+    "    vec3 fc = u_underC * exp(-u_underA.rgb * (u_underK.w * cd));\n"
+    "    if (u_night.w >= 0.0) fc = mix(fc, vec3(dot(fc, vec3(0.299, 0.587, 0.114))), u_night.w) * u_night.xyz;\n"
+    "    float Lg = min(L, u_underG.z);\n"
+    "    if (u_pools != 0 && dot(eg, vec3(1.0)) > 0.002) {\n"
+    "        for (int i = 0; i < 128; i++) {\n"
+    "            if (i >= u_nl) break;\n"
+    "            if (u_lc[i].w > 0.5 || u_lc[i].w < -0.5) continue;\n"
+    "            vec3 q = u_lp[i].xyz - C;\n"
+    "            float t = dot(q, dir);\n"
+    "            if (t > 0.0 && t < Lg && length(q - dir * t) < 192.0) Lg = t;\n"
+    "        }\n"
+    "    }\n"
+    "    vec3 Tg = exp(-u_underA.rgb * (u_underK.z * Lg * u_underG.y));\n"
+    "    vec3 o = ((c - eg - ep) * lit + ep) * T + eg * Tg + fc * (1.0 - T);\n"
+    "    if (u_underS.x > 0.0) o += under_shafts(C, dir, L);\n"
+    "    return o;\n"
+    "}\n"
     "void main() {\n"
     "    vec2 uv = gl_TexCoord[0].st;\n"
     "    vec3 c = texture2D(u_frame, uv).rgb;\n"
@@ -831,6 +941,7 @@ static const char *const k_fragment =
     "            c = (c - e) * (1.0 - u_sunK.w * amount) + e;\n"
     "        }\n"
     "    }\n"
+    "    vec3 poolLit = vec3(0.0);\n"
     "    if (u_pools != 0 && solid) {\n"
     "        vec3 a = texture2D(u_albedo, uv).rgb;\n"
     "        if (a.r + a.g + a.b > 0.0) {\n"
@@ -874,6 +985,7 @@ static const char *const k_fragment =
     "            }\n"
     "            vec3 pool = a * add * u_strength;\n"
     "            c += pool;\n"
+    "            poolLit = pool;\n"
     "            if (u_soft != 0) {\n"
     "                float m = max(c.r, max(c.g, c.b));\n"
     "                if (m > 0.8) {\n"
@@ -928,7 +1040,14 @@ static const char *const k_fragment =
     "        c = mix(c, vec3(0.0), contour * 0.6);\n"
     "        c = mix(c, vec3(1.0), line * 0.85);\n"
     "    }\n"
-    "    if (u_fogK.x > 0.5 && (d >= 1.0 || w > 16.0) && p.x >= 0.0 && p.y >= 0.0 && p.x < u_vp.z && p.y < u_vp.w)\n"
+    "    bool inView = (d >= 1.0 || w > 16.0) && p.x >= 0.0 && p.y >= 0.0 && p.x < u_vp.z && p.y < u_vp.w;\n"
+    "    bool underNow = u_underK.x > 0.5 && inView;\n"
+    "    if (u_fogK.x > 0.5 && inView && !underNow)\n"
+    "        c = fog_apply(c, world, d >= 1.0);\n"
+    "    if (underNow)\n"
+    "        { vec3 eg = min(texture2D(u_glow, uv).rgb, c) * u_underG.x;\n"
+    "          c = under_apply(c, eg, min(poolLit, c - eg) * u_underG.x, world, d >= 1.0, N); }\n"
+    "    if (u_fogK.x > 0.5 && underNow)\n"
     "        c = fog_apply(c, world, d >= 1.0);\n"
     "    if (u_beamK.y > 0.0) {\n"
     "        vec4 bm = texture2D(u_beam, uv);\n"
@@ -971,6 +1090,8 @@ static const char *const k_fragment =
     "        vec4 mm = texture2D(u_refl, p / u_vp.zw);\n"
     "        c = mm.a > 0.0 ? mm.rgb : vec3(0.3, 0.0, 0.3);\n"
     "    }\n"
+    "    if (u_depthView == 1) c = d >= 1.0 ? vec3(0.0) : texture2D(u_exact, uv).r > 0.0 ? c * 0.4 : vec3(1.0, 0.0, 1.0);\n"
+    "    if (u_depthView == 2) c = d >= 1.0 ? vec3(0.0) : N * 0.5 + 0.5;\n"
     "    if (u_invGamma != 1.0) c = pow(clamp(c, 0.0, 1.0), vec3(u_invGamma));\n"
     "    float aa = (u_aa == 1 && (d >= 1.0 || w > 16.0) && p.x >= 0.0 && p.y >= 0.0 && p.x < u_vp.z && p.y < u_vp.w)\n"
     "             ? 1.0 : 0.0;\n"
@@ -1167,12 +1288,21 @@ static int make_program(void)
     g_uWaterFloor = fGetUniformLocation(g_prog, "u_waterFloor");
     g_uExact     = fGetUniformLocation(g_prog, "u_exact");
     g_uHaveExact = fGetUniformLocation(g_prog, "u_haveExact");
+    g_uDepthView = fGetUniformLocation(g_prog, "u_depthView");
     g_uNrmAcross = fGetUniformLocation(g_prog, "u_nrmAcross");
     g_uSeams     = fGetUniformLocation(g_prog, "u_seams");
     g_uAa        = fGetUniformLocation(g_prog, "u_aa");
     g_uFogK     = fGetUniformLocation(g_prog, "u_fogK");
     g_uFogBox    = fGetUniformLocation(g_prog, "u_fogBox");
     g_uFogC      = fGetUniformLocation(g_prog, "u_fogC");
+    g_uUnderK    = fGetUniformLocation(g_prog, "u_underK");
+    g_uUnderA    = fGetUniformLocation(g_prog, "u_underA");
+    g_uUnderC    = fGetUniformLocation(g_prog, "u_underC");
+    g_uUnderW    = fGetUniformLocation(g_prog, "u_underW");
+    g_uUnderB    = fGetUniformLocation(g_prog, "u_underB");
+    g_uUnderS    = fGetUniformLocation(g_prog, "u_underS");
+    g_uUnderL    = fGetUniformLocation(g_prog, "u_underL");
+    g_uUnderG    = fGetUniformLocation(g_prog, "u_underG");
     g_uFogN      = fGetUniformLocation(g_prog, "u_fogN");
     g_uShadowK   = fGetUniformLocation(g_prog, "u_shadowK");
     g_uSun       = fGetUniformLocation(g_prog, "u_sun");
@@ -1572,6 +1702,7 @@ static int U9CALL h_lights_save(void *ls, int file)
 static int U9CALL h_lights_load(void *ls, int file)
 {
     int r = o_lightsLoad(ls, file);
+    g_loads++;
     if (r && u9light_ranged_switch() == 0u) {
         u9light_set_ranged_switch(1u);
         g_loadRepairs++;
@@ -1658,6 +1789,9 @@ void u9glpost_init(void)
     g_effectDepthWrite = u9cfg_int("gl_effect_depth_write", 1);
     g_effectFullSize   = u9cfg_int("gl_effect_full_size", 0);
     g_depthGlide       = u9cfg_int("gl_depth_glide", 1);
+    g_depthSlack       = u9cfg_int("gl_depth_glide_slack", 0);
+    if (g_depthSlack < 0) g_depthSlack = 0;
+    if (g_depthSlack > 64) g_depthSlack = 64;
     if (g_effectFade < 0) g_effectFade = 0;
     if (g_effectFade > 50) g_effectFade = 50;
     g_bloom         = u9cfg_int("gl_bloom", 1);
@@ -1667,13 +1801,20 @@ void u9glpost_init(void)
     g_bloomAdditive = u9cfg_int("gl_bloom_additive", 100);
     if (g_bloomAdditive < 0) g_bloomAdditive = 0;
     g_bloomGlow     = u9cfg_int("gl_bloom_glow", 100);
-    g_bloomRunes    = u9cfg_int("gl_bloom_runes", 500);
+    g_bloomRunes    = u9cfg_int("gl_bloom_runes", 300);
     if (g_bloomRunes < 0) g_bloomRunes = 0;
     if (g_bloomGlow < 0) g_bloomGlow = 0;
     map_list(u9cfg_str("gl_bloom_glow_textures", "6429,6412,6143,6500,6501,4664,6415,4328,4329,4330,4761,4762"), g_bloomGlowList, sizeof g_bloomGlowList);
+    g_bloomGlyphs   = u9cfg_int("gl_bloom_glyphs", 300);
+    if (g_bloomGlyphs < 0) g_bloomGlyphs = 0;
     g_bloomSurface  = u9cfg_int("gl_bloom_surface", 100);
     if (g_bloomSurface < 0) g_bloomSurface = 0;
-    map_list(u9cfg_str("gl_bloom_surface_textures", "3160,2197,6552,6553,1082,6006,6007,6008,6009,6010,6011,6012,6013,5831,3184,3319,6511,6512,6513,6514,6515,6516,6517,6518,7336,6843,5895,5896"), g_bloomSurfaceList, sizeof g_bloomSurfaceList);
+    map_list(u9cfg_str("gl_bloom_surface_textures", "3160,2197,6552,6553,1082,6006,6007,6008,6009,6010,6011,6012,6013,5831,3184,3319,6511,6512,6513,6514,6515,6516,6517,6518,7336,6843,5895,5896,6383,6973,6966,3703,6953,6961"), g_bloomSurfaceList, sizeof g_bloomSurfaceList);
+    map_list(u9cfg_str("gl_guardian_textures", "1405,1406,3116,3133,3134,3135,3230,3231,3232,7411"), g_guardianList, sizeof g_guardianList);
+    g_guardianGlow   = u9cfg_int("gl_guardian_glow", 150);
+    g_guardianBright = u9cfg_int("gl_guardian_bright", 175);
+    if (g_guardianGlow < 0) g_guardianGlow = 0;
+    if (g_guardianBright < 0) g_guardianBright = 0;
     g_bloomStrength = u9cfg_int("gl_bloom_strength", 200);
     if (g_bloomStrength < 0) g_bloomStrength = 0;
     g_waterOn       = u9cfg_int("gl_water_reflect", 1);
@@ -1682,6 +1823,31 @@ void u9glpost_init(void)
     g_waterDist     = u9cfg_int("gl_water_reflect_distance", 8000);
     g_waterSteps    = u9cfg_int("gl_water_reflect_steps", 32);
     g_waterFloor    = u9cfg_int("gl_water_reflect_floor", 25);
+    g_dome          = u9cfg_int("gl_dome_light", 1);
+    g_domeBright    = u9cfg_int("gl_dome_light_bright", 250);
+    if (g_domeBright < 0) g_domeBright = 0;
+    if (g_domeBright > 1000) g_domeBright = 1000;
+    g_domeReach     = u9cfg_int("gl_dome_light_reach", 3000);
+    if (g_domeReach < 50) g_domeReach = 50;
+    {
+        const char *at = u9cfg_str("gl_dome_light_at", "9:36111,73962,962");
+        int mp; float x, y, z;
+        if (at && sscanf(at, "%d:%f,%f,%f", &mp, &x, &y, &z) == 4) {
+            g_domeMap = mp; g_domeAt[0] = x; g_domeAt[1] = y; g_domeAt[2] = z;
+        }
+        g_domeRadius = u9cfg_int("gl_dome_light_radius", 800);
+        if (g_domeRadius < 50) g_domeRadius = 50;
+    }
+    {
+        const char *s = u9cfg_str("gl_dome_light_textures", "6486,6487");
+        g_nDomeTex = 0;
+        while (s && *s && g_nDomeTex < 8) {
+            int id = atoi(s);
+            if (id > 0) g_domeTex[g_nDomeTex++] = id;
+            while (*s && *s != ',') s++;
+            if (*s == ',') s++;
+        }
+    }
     g_moonBright    = moon_percent(u9cfg_int("gl_moon_bright", 100));
     g_moonBloom     = moon_percent(u9cfg_int("gl_moon_bloom", 100));
     g_moonHalo      = moon_percent(u9cfg_int("gl_moon_halo", 100));
@@ -1691,6 +1857,7 @@ void u9glpost_init(void)
     u9shadow_init();
     u9moon_init();
     u9fog_init();
+    u9under_init();
     u9beam_init();
     u9rays_init();
     u9ao_init();
@@ -1871,6 +2038,11 @@ float u9glpost_effect_lod_bias(int effect)
     return (effect && g_effectFullSize) ? -16.0f : 0.0f;
 }
 
+int u9glpost_depth_slack(void)
+{
+    return g_depthSlack;
+}
+
 int u9glpost_depth_glide(void)
 {
     return g_depthGlide;
@@ -1892,6 +2064,9 @@ float u9glpost_bloom_share(int texId, int effect, int additive)
     }
     if (u9lava_is(texId)) { g_bloomWhy = "lava"; return g_bloomLava ? 1.0f : 0.0f; }
     if (u9fx_is_rune(texId)) { g_bloomWhy = "rune"; return (float)g_bloomRunes / 100.0f; }
+    if (u9fx_is_pillar(texId)) { g_bloomWhy = "small columns"; return u9fx_pillar_glow(); }
+    if (u9fx_is_glyph(texId)) { g_bloomWhy = "glyphs"; return (float)g_bloomGlyphs / 100.0f; }
+    if (map_listed(g_guardianList, texId)) { g_bloomWhy = "guardian"; return (float)g_guardianGlow / 100.0f; }
     if (map_listed(g_bloomSurfaceList, texId)) { g_bloomWhy = "surface list"; return (float)g_bloomSurface / 100.0f; }
     g_bloomWhy = "not listed";
     if (!effect) return 0.0f;
@@ -1908,6 +2083,27 @@ static int moon_percent(int v)
 }
 
 float u9glpost_moon_bright(void) { return (float)g_moonBright / 100.0f; }
+
+float u9glpost_guardian_bright(int texId)
+{
+    return map_listed(g_guardianList, texId) ? (float)g_guardianBright / 100.0f : 1.0f;
+}
+
+int u9glpost_dome_tex(int texId)
+{
+    int k;
+    for (k = 0; k < g_nDomeTex; k++) if (g_domeTex[k] == texId) return 1;
+    return 0;
+}
+float u9glpost_dome_strength(void) { return g_dome ? (float)g_domeBright / 100.0f : 0.0f; }
+int u9glpost_dome_here(int map, const float p[3])
+{
+    float dx = p[0] - g_domeAt[0], dy = p[1] - g_domeAt[1], dz = p[2] - g_domeAt[2];
+    float r = (float)g_domeRadius;
+    return map == g_domeMap && dx * dx + dy * dy + dz * dz < r * r;
+}
+unsigned u9glpost_loads(void) { return g_loads; }
+float u9glpost_dome_range(void)    { return (float)g_domeReach; }
 float u9glpost_moon_halo(void)   { return (float)g_moonHalo / 100.0f; }
 
 static void moon_phase_list(const char *s)
@@ -2283,7 +2479,7 @@ static int dungeon_here(int *flagged)
     int map, under;
     if (!g_dungeonListsRead) {
         g_dungeonListsRead = 1;
-        map_list(u9cfg_str("gl_dungeon_skip", "9,14"), g_dungeonSkip, sizeof g_dungeonSkip);
+        map_list(u9cfg_str("gl_dungeon_skip", "9,14,56,39"), g_dungeonSkip, sizeof g_dungeonSkip);
     }
     under = u9sun_read(&s) && s.underground;
     if (flagged) *flagged = under;
@@ -2787,6 +2983,7 @@ void u9glpost_end(int surfW, int surfH)
     fActiveTexture(GL_TEXTURE0);
     fUniform1i(g_uExact, 16);
     fUniform1i(g_uHaveExact, g_exact ? 1 : 0);
+    fUniform1i(g_uDepthView, g_depthView);
     fUniform1i(g_uNrmAcross, g_nrmAcross);
     fUniform1i(g_uSeams, g_seams);
     {
@@ -2832,6 +3029,19 @@ void u9glpost_end(int surfW, int surfH)
             fUniform3f(g_uFogC, fp.rgb[0], fp.rgb[1], fp.rgb[2]);
             fUniform4f(g_uFogN, fp.noise, fp.scale, fp.time, fp.reach);
         }
+        {
+            U9UnderFog uf;
+            u9under_fog(&uf);
+            fUniform4f(g_uUnderK, uf.on && have && v.depthMode == 2 && !u9light_book_open() ? 1.0f : 0.0f,
+                       uf.surface, uf.density, uf.dark);
+            fUniform4f(g_uUnderA, uf.absorb[0], uf.absorb[1], uf.absorb[2], uf.reach);
+            fUniform3f(g_uUnderC, uf.rgb[0], uf.rgb[1], uf.rgb[2]);
+            fUniform4f(g_uUnderW, uf.caustic, uf.cscale, uf.cdepth, uf.time);
+            fUniform1f(g_uUnderB, uf.cblur);
+            fUniform4f(g_uUnderS, uf.shaft, uf.sscale, uf.sreach, uf.time);
+            fUniform3f(g_uUnderL, uf.sdir[0], uf.sdir[1], uf.sdir[2]);
+            fUniform3f(g_uUnderG, uf.glowFree, uf.glowHaze, uf.glowReach);
+        }
         fActiveTexture(GL_TEXTURE12);
         glBindTexture(GL_TEXTURE_2D, g_glow);
         fActiveTexture(GL_TEXTURE0);
@@ -2849,7 +3059,7 @@ void u9glpost_end(int surfW, int surfH)
                 for (s = 0; s < U9SHADOW_MAX; s++) g_sh[s].held = 0;
             }
             if (pools) {
-                static U9LightSnap all[128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS];
+                static U9LightSnap all[128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS + U9FX_PILLAR_LIGHTS + 1];
                 static GLfloat lp[MAX_POOL_LIGHTS * 4], lc[MAX_POOL_LIGHTS * 4];
                 float cam[3], dt, fw[MAX_POOL_LIGHTS], av[3];
                 int lsp[MAX_POOL_LIGHTS + 1][U9SP_LINKED], haveAv = 0, roomsKnown = 0, r2;
@@ -2861,6 +3071,9 @@ void u9glpost_end(int surfW, int surfH)
                 n = lava_lights(all, n, 128 + LAVA_LIGHTS, &v);
                 n = u9fx_fire_lights(all, n, 128 + LAVA_LIGHTS + U9FX_LIGHTS, &v, dungeon_here(NULL));
                 n = u9fx_rune_lights(all, n, 128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS, &v);
+                n = u9fx_pillar_lights(all, n, 128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS + U9FX_PILLAR_LIGHTS,
+                                       &v);
+                n = u9fx_gate_lights(all, n, 128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS + U9FX_PILLAR_LIGHTS + 1);
                 {
                     int ax, ay, az;
                     if (g_shadowOn && u9avatar_position(&ax, &ay, &az)) {
@@ -2887,7 +3100,8 @@ void u9glpost_end(int surfW, int surfH)
                     pool_colour(l, slot[k], dt, now, col);
                     g_lt[slot[k]].seen = now;
                     lc[k * 4] = col[0] * fw[k]; lc[k * 4 + 1] = col[1] * fw[k]; lc[k * 4 + 2] = col[2] * fw[k];
-                    lc[k * 4 + 3] = (l->flags & 0x02u) ? 1.0f : l->type == U9TYPE_LAVA_LIGHT ? -1.0f : 0.0f;
+                    lc[k * 4 + 3] = (l->flags & 0x02u) ? 1.0f
+                                  : (l->type == U9TYPE_LAVA_LIGHT || (l->flags & U9LIGHT_SOFT)) ? -1.0f : 0.0f;
                 }
                 fActiveTexture(GL_TEXTURE2);
                 glBindTexture(GL_TEXTURE_2D, g_albedo);
@@ -2967,7 +3181,7 @@ void u9glpost_end(int surfW, int surfH)
                         float d[3], dist, R = l->range, reach, at, lum;
                         int share = 1;
                         if ((l->flags & 0x02u) || fw[k] < 0.99f || l->type == U9TYPE_LAVA_LIGHT ||
-                            l->type == U9TYPE_FIRE_LIGHT || l->type == U9TYPE_RUNE_LIGHT) continue;
+                            l->type == U9TYPE_FIRE_LIGHT || l->type == U9TYPE_RUNE_LIGHT || l->type == U9TYPE_PILLAR_LIGHT || l->type == U9TYPE_GATE_LIGHT) continue;
                         if (roomsKnown && l->type != 0) {
                             share = 0;
                             if (lsp[k][0] < 0 && lsp[m][0] < 0) share = 1;
@@ -3008,7 +3222,7 @@ void u9glpost_end(int surfW, int surfH)
                         if (k == pick || (all[idx[k]].flags & 0x02u) || fw[k] < 0.99f ||
                             all[idx[k]].type == U9TYPE_LAVA_LIGHT ||
                             all[idx[k]].type == U9TYPE_FIRE_LIGHT ||
-                            all[idx[k]].type == U9TYPE_RUNE_LIGHT) continue;
+                            all[idx[k]].type == U9TYPE_RUNE_LIGHT || all[idx[k]].type == U9TYPE_PILLAR_LIGHT || all[idx[k]].type == U9TYPE_GATE_LIGHT) continue;
                         want[nWant++] = k;
                     }
                     for (k = 0; k < m; k++) { lsh[k * 2] = -1.0f; lsh[k * 2 + 1] = 0.0f; }
@@ -3175,8 +3389,9 @@ void u9glpost_end(int surfW, int surfH)
             fUniform4f(g_uM1, v.m[4], v.m[5], v.m[6],  v.m[7]);
             fUniform4f(g_uM2, v.m[8], v.m[9], v.m[10], v.m[11]);
         }
+        u9under_frame();
         {
-            int on = have && waterNow && v.depthMode == 2;
+            int on = have && waterNow && v.depthMode == 2 && !u9under_state(NULL);
             int steps = g_waterSteps < 4 ? 4 : g_waterSteps > 48 ? 48 : g_waterSteps;
             fActiveTexture(GL_TEXTURE0 + 23);
             glBindTexture(GL_TEXTURE_2D, on ? g_waterTex : 0);
@@ -3206,8 +3421,9 @@ void u9glpost_end(int surfW, int surfH)
             else if (g_probeOut) g_probeOut("no view this frame - is a world loaded?");
         }
         if (g_pickWanted) {
+            int ties = g_pickWanted == 2;
             g_pickWanted = 0;
-            if (g_pickOut) u9gl_pick_report(g_pickOut);
+            if (g_pickOut) { if (ties) u9gl_pick_ties(g_pickOut); else u9gl_pick_report(g_pickOut); }
         }
         if (g_beamWanted) {
             int tex = g_beamWanted;
@@ -3239,6 +3455,10 @@ void u9glpost_end(int surfW, int surfH)
     pool_probe_after();
     probe_mark();
     light_marks();
+    if (u9gl_label_mode() == 3) {
+        U9FrameView wv;
+        if (u9gl_frame_view(&wv)) u9wz_draw(&wv, surfW, surfH, g_scale);
+    }
     if (g_checkWanted || g_frames == 300) {
         g_checkWanted = 0;
         check_copy(g_w, g_h, inv, g_pools);
@@ -3303,6 +3523,27 @@ static void night_grade(void)
 
 void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
 {
+    if (arg && !strncmp(arg, "dome", 4) && (arg[4] == 0 || arg[4] == ' ')) {
+        const char *v = arg + 4;
+        while (*v == ' ') v++;
+        if (!strcmp(v, "on"))                    g_dome = 1;
+        else if (!strcmp(v, "off"))              g_dome = 0;
+        else if (!strncmp(v, "bright ", 7))      g_domeBright = atoi(v + 7);
+        else if (!strncmp(v, "reach ", 6))       g_domeReach = atoi(v + 6);
+        else if (*v) {
+            out("post dome [on|off | bright <percent> | reach <units>]   the light cast by the glow over the"
+                " column in Sir William Lett's tomb");
+            return;
+        }
+        if (g_domeBright < 0) g_domeBright = 0;
+        if (g_domeBright > 1000) g_domeBright = 1000;
+        if (g_domeReach < 50) g_domeReach = 50;
+        u9log_line("GLPOST dome light %s: strength %d%%, reach %d", g_dome ? "on" : "off",
+                   g_domeBright, g_domeReach);
+        out("dome light %s: strength %d%%, reach %d units; it lights what is round it when the light pools"
+            " are on (pool on)", g_dome ? "on" : "off", g_domeBright, g_domeReach);
+        return;
+    }
     if (arg && !strncmp(arg, "dungeon", 7)) {
         const char *v = arg + 7;
         int flagged, graded, map = u9console_current_map();
@@ -3421,10 +3662,23 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
         while (*v == ' ') v++;
         if (!strcmp(v, "glide on")) g_depthGlide = 1;
         else if (!strcmp(v, "glide off")) g_depthGlide = 0;
-        else if (*v) { out("post depth glide on|off"); return; }
-        if (*v) u9log_line("GLPOST depth rounded to Glide's W-buffer: %s", g_depthGlide ? "on" : "off");
-        out(g_depthGlide ? "depth rounded to Glide's W-buffer precision (w/4096): nearly coplanar surfaces tie as on a Voodoo"
-                         : "depth at full precision");
+        else if (!strncmp(v, "view", 4)) {
+            g_depthView = atoi(v + 4);
+            if (g_depthView < 0 || g_depthView > 2) g_depthView = 0;
+            out(g_depthView == 1 ? "depth view: magenta where the position comes from the rounded depth (no exact distance)"
+                : g_depthView == 2 ? "depth view: the rebuilt surface direction as colour" : "depth view off");
+            return;
+        }
+        else if (!strncmp(v, "slack ", 6)) {
+            g_depthSlack = atoi(v + 6);
+            if (g_depthSlack < 0) g_depthSlack = 0;
+            if (g_depthSlack > 64) g_depthSlack = 64;
+        }
+        else if (*v) { out("post depth glide on|off | post depth slack <steps, 0 off>"); return; }
+        if (*v) u9log_line("GLPOST depth rounded to Glide's W-buffer: %s, slack %d steps", g_depthGlide ? "on" : "off", g_depthSlack);
+        out(g_depthGlide ? "depth rounded to Glide's W-buffer precision (w/4096): nearly coplanar surfaces tie as on a Voodoo;"
+                           " runs writing no depth test %d steps nearer"
+                         : "depth at full precision (slack %d steps, used only with glide on)", g_depthSlack);
         return;
     }
     if (arg && !strncmp(arg, "normals", 7) && (arg[7] == ' ' || !arg[7])) {
@@ -3508,13 +3762,14 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
         else if (!strncmp(v, "glow ", 5)) g_bloomGlow = atoi(v + 5);
         else if (!strncmp(v, "surface ", 8)) g_bloomSurface = atoi(v + 8);
         else if (!strncmp(v, "runes ", 6)) g_bloomRunes = atoi(v + 6);
+        else if (!strncmp(v, "glyphs ", 7)) g_bloomGlyphs = atoi(v + 7);
         else if (!strcmp(v, "lava on"))   g_bloomLava = 1;
         else if (!strcmp(v, "lava off"))  g_bloomLava = 0;
         else if (!strcmp(v, "view"))      g_bloomView = !g_bloomView;
         else if (!strcmp(v, "off"))       g_bloom = 0;
         else if (!strcmp(v, "on"))        g_bloom = 1;
         else if (*v) {
-            out("post bloom on|off | strength <percent> | lava on|off | fire|additive|glow|surface|runes <percent, 0 off> | view");
+            out("post bloom on|off | strength <percent> | lava on|off | fire|additive|glow|surface|runes|glyphs <percent, 0 off> | view");
             return;
         }
         if (g_bloomStrength < 0) g_bloomStrength = 0;
@@ -3529,16 +3784,45 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
         if (g_bloomSurface > 1000) g_bloomSurface = 1000;
         if (g_bloomRunes < 0) g_bloomRunes = 0;
         if (g_bloomRunes > 1000) g_bloomRunes = 1000;
+        if (g_bloomGlyphs < 0) g_bloomGlyphs = 0;
+        if (g_bloomGlyphs > 1000) g_bloomGlyphs = 1000;
         if (*v) u9log_line("GLPOST bloom: '%s' - %s, strength %d%%, lava %s, view %s", arg,
                            g_bloom ? "on" : "off", g_bloomStrength, g_bloomLava ? "on" : "off",
                            g_bloomView ? "on" : "off");
         out("bloom %s, strength %d%%; sources: lava %s, flames %d%%, additive effects %d%%, glows %d%% (%s),"
-            " surfaces %d%% (%s), runes %d%%; %u frames bloomed%s%s", g_bloom ? "on" : "off",
+            " surfaces %d%% (%s), runes %d%%, glyphs %d%%; %u frames bloomed%s%s", g_bloom ? "on" : "off",
             g_bloomStrength, g_bloomLava ? "on" : "off", g_bloomFire, g_bloomAdditive, g_bloomGlow,
             g_bloomGlowList[1] ? g_bloomGlowList : "none", g_bloomSurface,
-            g_bloomSurfaceList[1] ? g_bloomSurfaceList : "none", g_bloomRunes, g_bloomFrames,
+            g_bloomSurfaceList[1] ? g_bloomSurfaceList : "none", g_bloomRunes, g_bloomGlyphs, g_bloomFrames,
             g_bloomView ? "; view on: the bloom alone" : "",
             !g_want ? " - needs gl_post = 1 (restart)" : g_fbo && !g_bloomSrc ? " - NOT AVAILABLE (see log)" : "");
+        return;
+    }
+    if (arg && !strncmp(arg, "blackgate", 9)) {
+        u9fx_gate_command(arg + 9, out);
+        return;
+    }
+    if (arg && !strncmp(arg, "pillar", 6)) {
+        u9fx_pillar_command(arg + 6, out);
+        return;
+    }
+    if (arg && !strncmp(arg, "guardian", 8)) {
+        const char *v = arg + 8;
+        while (*v == ' ') v++;
+        if (!strncmp(v, "glow ", 5))        g_guardianGlow = atoi(v + 5);
+        else if (!strncmp(v, "bright ", 7)) g_guardianBright = atoi(v + 7);
+        else if (*v) {
+            out("post guardian glow <percent, 0 off> | bright <percent, 100 as drawn>");
+            return;
+        }
+        if (g_guardianGlow < 0) g_guardianGlow = 0;
+        if (g_guardianGlow > 1000) g_guardianGlow = 1000;
+        if (g_guardianBright < 0) g_guardianBright = 0;
+        if (g_guardianBright > 1000) g_guardianBright = 1000;
+        if (*v) u9log_line("GLPOST guardian: '%s' - glow %d%%, bright %d%%", arg, g_guardianGlow, g_guardianBright);
+        out("guardian: glow %d%% of the bloom, colour %d%%; textures %s%s", g_guardianGlow, g_guardianBright,
+            g_guardianList[1] ? g_guardianList : "none",
+            !g_bloom ? " - bloom is off (post bloom on)" : "");
         return;
     }
     if (arg && !strncmp(arg, "moon", 4)) {
@@ -3612,9 +3896,9 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
         g_probeOut = out;
         return;
     }
-    if (arg && !strcmp(arg, "pick")) {
+    if (arg && (!strcmp(arg, "pick") || !strcmp(arg, "pick ties"))) {
         if (!g_want || g_paused || g_failed || !g_fbo) { out("the post pass is not running"); return; }
-        g_pickWanted = 1;
+        g_pickWanted = arg[4] ? 2 : 1;
         g_pickOut = out;
         return;
     }
@@ -3635,7 +3919,7 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
         !g_want ? "not enabled (gl_post = 0)" : g_failed ? "FAILED (see log)" : g_paused ? "paused" : "on",
         "", g_w, g_h, g_frames, u9glpost_owns_gamma() ? "applied here" : "not applied here",
         g_checks, g_checkFails);
-    out("post check | post grid | post probe | post pick | post beam [texture] | post aa ... | post ao ... | post contact ... | post water ... | post taa ... | post ss 1|2|3 | post night ... | post dungeon ... | post bloom ... | post moon ... | post fade <percent> | post hide <texture ...>|off | post depth glide on|off | post normals across|nearer | post effects [census|depth on|off|full on|off] | post off | post on");
+    out("post check | post grid | post probe | post pick [ties] | post beam [texture] | post aa ... | post ao ... | post contact ... | post water ... | post taa ... | post ss 1|2|3 | post night ... | post dungeon ... | post bloom ... | post moon ... | post guardian ... | post pillar ... | post blackgate ... | post fade <percent> | post hide <texture ...>|off | post depth glide on|off | post normals across|nearer | post effects [census|depth on|off|full on|off] | post off | post on");
 }
 
 void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
@@ -3661,6 +3945,7 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
         return;
     }
     else if (!strncmp(arg, "fire", 4)) { u9fx_fire_command(arg + 4, out); return; }
+    else if (!strncmp(arg, "glow", 4)) { u9fx_glow_command(arg + 4, out); return; }
     else if (!strncmp(arg, "rune", 4)) { u9fx_rune_command(arg + 4 + (arg[4] == 's'), out); return; }
     else if (!strcmp(arg, "fill cut") || !strcmp(arg, "fill keep")) {
         fill_cut_here();
@@ -3816,7 +4101,7 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
         if (pc > 1000) pc = 1000;
         g_strength = (float)pc / 100.0f;
     } else if (*arg) {
-        out("pool on|off | pool contain on|off | pool keepout on|off | pool march on|off | pool replace on|off | pool fill cut|keep | pool lava ... | pool fire ... | pool rune ... |"
+        out("pool on|off | pool contain on|off | pool keepout on|off | pool march on|off | pool replace on|off | pool fill cut|keep | pool lava ... | pool fire ... | pool glow ... | pool rune ... |"
             " pool strength <percent> | pool warmth <percent> | pool soft on|off | pool debug 0|1|2 | pool rooms |"
             " pool probe | pool tail off|spill|all | pool tail level <percent> | pool tail reach <percent> |"
             " pool flicker smooth <ms> | pool flicker range <units, 0 the game's> | pool rank screen|near |"

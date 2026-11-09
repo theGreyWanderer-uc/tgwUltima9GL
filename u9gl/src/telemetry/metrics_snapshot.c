@@ -32,6 +32,7 @@ void u9telemetry_game_record_init(U9TelemetryGameRecord *r)
     entry(r, 14, U9TM_GROUP_AREA_CELLS, 1, &r->area_cells, sizeof r->area_cells);
     entry(r, 15, U9TM_GROUP_TEXTURE_LIST, 1, &r->texture_list, sizeof r->texture_list);
     entry(r, 16, U9TM_GROUP_MESH_LIST, 1, &r->mesh_list, sizeof r->mesh_list);
+    entry(r, 17, U9TM_GROUP_PLAYER, 3, &r->player, sizeof r->player);
 }
 
 static uint64_t scaled(double value, double scale)
@@ -184,6 +185,44 @@ static void copy_heavy(const U9TelemetryInputs *in, U9TelemetryGameRecord *out)
     }
 }
 
+static void copy_player(const U9TelemetryInputs *in, U9TelemetryGameRecord *out)
+{
+    const U9PlayerStats *p = in->player;
+    U9TelemetryPlayer *g = &out->player;
+    if (!p || in->map < 0 || (!p->recordValid && !p->datumsValid)) return;
+    out->directory[17].flags = U9TM_GROUP_AVAILABLE;
+    g->collected_qpc = in->world_qpc;
+    g->weapon = -1;
+    if (p->recordValid) {
+        g->record_valid = 1;
+        g->strength = p->strength; g->dexterity = p->dexterity; g->intelligence = p->intelligence;
+        g->health = p->health; g->health_max = p->healthMax; g->health_base = p->healthBase;
+        g->mana = p->mana; g->mana_max = p->manaMax; g->mana_base = p->manaBase;
+        g->breath = p->breath; g->breath_max = p->breathMax; g->breath_base = p->breathBase;
+        g->armour = p->armour; g->armour_bonus = p->armourBonus; g->magic_resist_bonus = p->magicResistBonus;
+        g->state_flags = p->stateFlags;
+        g->weapon = p->weapon;
+        g->skill_fists = p->skill[0]; g->skill_one_handed = p->skill[1]; g->skill_two_handed = p->skill[2];
+        g->skill_staff = p->skill[3]; g->skill_ranged = p->skill[4];
+        g->spells_lo = p->spellsLo; g->spells_hi = p->spellsHi;
+        g->active_spells = p->activeSpells;
+        g->spell_discount = (uint64_t)(p->spellDiscount != 0);
+        g->combat_states = p->combatStates;
+        g->stun_ms = p->stunMs;
+        g->equip_left_hand = p->equip[0]; g->equip_right_hand = p->equip[1]; g->equip_scabbard = p->equip[2];
+        g->equip_left_shoulder = p->equip[3]; g->equip_right_shoulder = p->equip[4];
+        g->equip_quiver = p->equip[5]; g->equip_left_forearm = p->equip[6];
+        g->equip_hands_class = p->handsClass;
+        g->gold = p->gold; g->arrows = p->arrows;
+    }
+    if (p->datumsValid) {
+        g->datums_valid = 1;
+        g->class_chosen = p->classChosen ? 1 : 0;
+        g->class_id = (uint64_t)(p->classId & 0xFF);
+        g->shrines = p->shrines & 0xFFu;
+    }
+}
+
 void u9telemetry_metrics_copy(const U9TelemetryInputs *in, U9TelemetryGameRecord *out)
 {
     const U9GLMetrics *m = in->metrics;
@@ -266,6 +305,7 @@ void u9telemetry_metrics_copy(const U9TelemetryInputs *in, U9TelemetryGameRecord
     out->renderer.buffer_bytes = m->buffer_bytes;
     out->renderer.fbos_alive = m->fbos_alive;
     if (!in->world_qpc) return;
+    copy_player(in, out);
     out->directory[5].flags = U9TM_GROUP_AVAILABLE;
     out->world.collected_qpc = in->world_qpc;
     if (in->map >= 0) { out->world.map_valid = 1; out->world.map = (uint64_t)in->map; }

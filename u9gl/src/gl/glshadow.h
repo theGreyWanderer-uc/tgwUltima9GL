@@ -9,6 +9,7 @@ typedef void (*U9CasterFn)(void *ctx, unsigned first, unsigned count, unsigned g
 unsigned    u9gl_casters(U9CasterFn fn, void *ctx);
 int         u9gl_reticle_centre(float *x, float *y);
 void        u9gl_pick_report(void (*out)(const char *fmt, ...));
+void        u9gl_pick_ties(void (*out)(const char *fmt, ...));
 void        u9gl_beam_report(int texId, void (*out)(const char *fmt, ...));
 unsigned    u9gl_runs_with_texture(int texId, U9CasterFn fn, void *ctx);
 #define U9TEX_LAVA 43

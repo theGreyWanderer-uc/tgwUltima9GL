@@ -72,6 +72,7 @@ static int gate_check(void)
 #include "../diag/furniture.h"
 
 #include "u9gl_version.h"
+#include "../gl/gltwosided.h"
 
 static HINSTANCE g_self;
 
@@ -101,6 +102,7 @@ static void attach(void)
     u9console_install();
     u9freeplace_install();
     u9glpost_install_hooks();
+    u9gl_two_sided_install();
 
     u9watch_install();
 
@@ -124,6 +126,7 @@ static void detach(int exiting)
 {
     u9watch_report();
     u9fix_report();
+    u9gold_report();
     u9probe_report();
     u9furn_report();
 
@@ -132,6 +135,7 @@ static void detach(int exiting)
     u9gl_alpha_report();
     u9feed_report();
     u9glpost_report();
+    u9gl_two_sided_report();
 
     u9log_line("");
     if (exiting) {

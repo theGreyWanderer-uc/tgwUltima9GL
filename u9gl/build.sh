@@ -103,7 +103,13 @@ U9LOG_SRC="
     src/fix/flyerfix.c
     src/fix/chasegrid.c
     src/fix/npcprobe.c
+    src/fix/actorwatch.c
     src/fix/travelprobe.c
+    src/fix/playerstats.c
+    src/fix/playerwatch.c
+    src/fix/playerset.c
+    src/fix/breathfix.c
+    src/fix/lettbook.c
     src/fix/trigprobe.c
     src/fix/meshprobe.c
     src/fix/meshstat.c
@@ -126,6 +132,8 @@ U9LOG_SRC="
     src/gl/glraster.c
     src/gl/glwbuffer.c
     src/gl/glpost.c
+    src/gl/glwaterzones.c
+    src/gl/gltwosided.c
     src/gl/glspaces.c
     src/gl/glshadow.c
     src/gl/glbloom.c
@@ -139,6 +147,7 @@ U9LOG_SRC="
     src/gl/glsun.c
     src/gl/glmoon.c
     src/gl/glfog.c
+    src/gl/glunder.c
     src/gl/gltex.c
     src/gl/glfeed.c
     src/texture/texoverride.c

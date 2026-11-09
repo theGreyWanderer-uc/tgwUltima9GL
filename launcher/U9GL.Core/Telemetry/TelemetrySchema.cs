@@ -104,8 +104,36 @@ public static class TelemetrySchema
         Array = new("meshes", "count", 256, [new("appearance", 16), new("handles", 16), new("bytes", 28), new("inPool", 1)]),
     };
 
+    public static readonly TelemetryGroupSchema Player = new(18, "player", 3,
+        [
+            new("recordValid", "", TelemetryFieldKind.Flag),
+            new("strength", "level", TelemetryFieldKind.Signed), new("dexterity", "level", TelemetryFieldKind.Signed),
+            new("intelligence", "level", TelemetryFieldKind.Signed),
+            F("health", "hp"), F("healthMax", "hp"), F("healthBase", "hp"),
+            F("mana", "mana"), F("manaMax", "mana"), F("manaBase", "mana"),
+            F("breath", ""), F("breathMax", ""), F("breathBase", ""),
+            F("armour", ""), F("armourBonus", ""), F("magicResistBonus", ""),
+            F("stateFlags", ""),
+            new("weapon", "", TelemetryFieldKind.Signed),
+            new("skillFists", "level", TelemetryFieldKind.Signed), new("skillOneHanded", "level", TelemetryFieldKind.Signed),
+            new("skillTwoHanded", "level", TelemetryFieldKind.Signed), new("skillStaff", "level", TelemetryFieldKind.Signed),
+            new("skillRanged", "level", TelemetryFieldKind.Signed),
+            new("datumsValid", "", TelemetryFieldKind.Flag), new("classChosen", "", TelemetryFieldKind.Flag),
+            new("classId", "", TelemetryFieldKind.Enum, Names: ["mage", "bard", "fighter", "druid", "tinker", "paladin", "ranger", "shepherd"]),
+            F("shrines", ""), F("spellsLo", ""), F("spellsHi", ""),
+            new("equipLeftHand", "", TelemetryFieldKind.Signed), new("equipRightHand", "", TelemetryFieldKind.Signed), new("equipScabbard", "", TelemetryFieldKind.Signed), new("equipLeftShoulder", "", TelemetryFieldKind.Signed),
+            new("equipRightShoulder", "", TelemetryFieldKind.Signed), new("equipQuiver", "", TelemetryFieldKind.Signed), new("equipLeftForearm", "", TelemetryFieldKind.Signed),
+            new("equipHandsClass", "", TelemetryFieldKind.Signed),
+            new("gold", "", TelemetryFieldKind.Signed),
+            new("arrows", "", TelemetryFieldKind.Signed),
+            F("activeSpells", ""),
+            new("spellDiscount", "", TelemetryFieldKind.Flag),
+            F("combatStates", ""),
+            new("stunMs", "ms", TelemetryFieldKind.Signed),
+        ], TelemetryContract.StaleMilliseconds);
+
     public static IReadOnlyList<TelemetryGroupSchema> Groups { get; } =
-        [Frames, Resources, Memory, Pacing, Renderer, World, TextureCache, Overrides, MemoryTrend, Area, AddressSpace, Vram, OverrideResident, Gpu, AreaCells, TextureList, MeshList];
+        [Frames, Resources, Memory, Pacing, Renderer, World, TextureCache, Overrides, MemoryTrend, Area, AddressSpace, Vram, OverrideResident, Gpu, AreaCells, TextureList, MeshList, Player];
 
     public static uint AllRequestBits { get; } = Groups.Aggregate(0u, (mask, g) => mask | g.RequestBit);
 

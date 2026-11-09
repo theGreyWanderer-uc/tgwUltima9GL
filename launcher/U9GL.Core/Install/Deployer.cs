@@ -186,8 +186,10 @@ public sealed class Deployer
         options ??= new InstallOptions();
         var (build, bundleVersion) = CheckGameAndBundle();
         var optionsIni = LoadOptionsIni();
-        var rasterizerWrite = new[] { ("Game", "Game Rasterizer", "3") };
-        PlanOptionsEdits(optionsIni, rasterizerWrite);
+        var installWrites = new List<(string Section, string Key, string Value)> { ("Game", "Game Rasterizer", "3") };
+        if (!File.Exists(_folder.Manifest))
+            installWrites.AddRange(SettingsCatalog.InitialOptionsValues((s, k) => optionsIni.Get(s, k)));
+        PlanOptionsEdits(optionsIni, installWrites);
 
         var installed = _versions.Read(_folder.Loader);
         if (installed.Exists && !installed.IsOurs && !options.ReplaceForeignLoader)
@@ -219,7 +221,8 @@ public sealed class Deployer
         }
 
         WriteU9glIni(manifest, [], bundleVersion, now, actions);
-        ApplyOptionsEdits(manifest, optionsIni, rasterizerWrite, ReasonInstall, now, actions);
+        GoldLetters.EnsureFiles(_folder, actions);
+        ApplyOptionsEdits(manifest, optionsIni, installWrites, ReasonInstall, now, actions);
 
         manifest.Version = bundleVersion;
         manifest.InstalledUtc = now;

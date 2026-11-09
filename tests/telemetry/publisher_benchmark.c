@@ -32,6 +32,10 @@ float u9gl_anisotropy_cached(void) { return 8.0f; }
 int u9gl_depth_mode(void) { return 0; }
 int u9console_current_map(void) { return 9; }
 int u9avatar_position(int *x, int *y, int *z) { *x = 1; *y = 2; *z = 3; return 1; }
+int u9player_read(U9PlayerStats *out) { memset(out, 0, sizeof *out); out->recordValid = 1; out->health = 100; return 1; }
+void u9player_purse(U9PlayerStats *out) { out->gold = 58; out->arrows = 11; }
+uint64_t u9player_spells_scan(void) { return (uint64_t)1 << 11; }
+int u9player_combat_scan(int *state, int *stunMs) { *state = 8; *stunMs = 1500; return 1; }
 
 int main(int argc, char **argv)
 {

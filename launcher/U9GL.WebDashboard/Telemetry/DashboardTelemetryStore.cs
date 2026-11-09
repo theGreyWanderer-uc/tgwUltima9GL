@@ -12,7 +12,8 @@ public sealed class DashboardTelemetryStore
         "resources.textureBytes", "resources.texturesAlive",
         "pacing.fpsMilli", "memoryTrend.floorSlopeMilli", "textureCache.cacheBytes", "textureCache.evictionsPerSec",
         "area.meshUsers", "area.worstCell", "area.objects", "area.nonfixedUsed", "area.fixedUsed",
-        "addressSpace.largestFreeBytes", "vram.localUsageBytes", "gpu.frameUs", "gpu.waterUs", "gpu.aoUs", "gpu.sunShadowsUs", "gpu.poolShadowsUs"];
+        "addressSpace.largestFreeBytes", "vram.localUsageBytes", "gpu.frameUs", "gpu.waterUs", "gpu.aoUs", "gpu.sunShadowsUs", "gpu.poolShadowsUs",
+        "player.health", "player.mana"];
     private static readonly (string Key, TelemetryGroupSchema Group, int Field)[] Series = HistorySeries.Select(key =>
     {
         int dot = key.IndexOf('.');
