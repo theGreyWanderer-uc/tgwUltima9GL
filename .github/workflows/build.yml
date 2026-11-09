@@ -97,21 +97,26 @@ jobs:
           cp "dist/u9gl-$VER/u9gl-noruntime.zip" "release/u9gl-$VER-noruntime.zip"
           (cd release && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
 
-      # One artifact per zip, so each is its own download on the run's page.
+      # One artifact per file, uploaded as-is (archive: false): the download is the release
+      # zip itself, which unzips straight into the game folder as u9gl\. With the default
+      # (archive: true) GitHub wrapped each zip in a second zip, and testers had to unzip
+      # twice (user, 2026-11-09). An unarchived artifact is one file, named after it.
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: u9gl-${{ env.VER }}
-          path: |
-            release/u9gl-${{ env.VER }}.zip
-            release/SHA256SUMS
+          path: release/u9gl-${{ env.VER }}.zip
+          archive: false
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: u9gl-${{ env.VER }}-noruntime
-          path: |
-            release/u9gl-${{ env.VER }}-noruntime.zip
-            release/SHA256SUMS
+          path: release/u9gl-${{ env.VER }}-noruntime.zip
+          archive: false
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          path: release/SHA256SUMS
+          archive: false
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v7.0.2
