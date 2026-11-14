@@ -599,6 +599,16 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x005CC96Eu, "GoldWidget_Draw: CALL Bitmap_Blit for the units digit, always drawn, the last" },
     [U9SYM_SOUND_ASSOC_LOOKUP] =
         { 0x00531590u, "SoundAssoc_Lookup: thiscall([0x00AD1318], type, &template), RET 8; 0 found, 1 none (sfxassoc.flx)" },
+    [U9SYM_HALBERD_ATTACH_ROW] =
+        { 0x0079EC14u, "AttachAdjust table 0x0079EB38 (23 rows of 0x2C) row 5: u16 type 3463, u32 key 3, then 9 floats - offset, scale, rotation in degrees; applied at equip by 0x005B6A60 (data, not code)" },
+    [U9SYM_HALBERD_ATTACH_OFFSET] =
+        { 0x0079EC1Cu, "the halberd's AttachAdjust row +0x08: offset 3.0, -2.0, -18.0 (data)" },
+    [U9SYM_HALBERD_ATTACH_ROTATION] =
+        { 0x0079EC34u, "the halberd's AttachAdjust row +0x20: rotation 0, 0, 27.0 degrees (data)" },
+    [U9SYM_ATTACH_ADJUST_APPLY] =
+        { 0x005B6A60u, "AttachAdjust_Apply entry, PUSH ESI / PUSH EDI / MOV EDI,[0x0079EF2C]: __fastcall(type, key, Vec3 *offset, Vec3 *scale, Rotation *rot), RET 0xC; writes nothing without a row" },
+    [U9SYM_ROT_FROM_EULER] =
+        { 0x004FFD10u, "Rotation_FromEuler: thiscall(rotation, rx, ry, rz) in radians, RET 0xC; AttachAdjust_Apply's third output - called" },
     [U9SYM_NARRATION_SLOT] =
         { 0x007580ACu, "vtable 0x007580A8 slot 1 -> 0x00684D40, the narration conversation's run: thiscall (conversation), RET; switches on +0x218 - 0x63 (entry 188 the Lett book's 2-handed lesson)" },
     [U9SYM_LINEHIT_SEARCH_START] =

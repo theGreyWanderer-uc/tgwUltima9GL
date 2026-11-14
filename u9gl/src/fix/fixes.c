@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <math.h>
 #include "../injection/patch.h"
 #include "../injection/config.h"
@@ -940,11 +941,164 @@ static int U9CALL h_soundAssoc(void *self, uint32_t type, uint32_t *tmpl)
     return r;
 }
 
+#define HALBERD_ROW_SIZE 0x2Cu
+static const uint8_t HALBERD_ROW_EXPECT[HALBERD_ROW_SIZE] = {
+    0x87, 0x0D, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x90, 0xC1,
+    0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x80, 0x3F,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD8, 0x41,
+};
+static const U9PatchSpec HALBERD_OFFSET_SPEC = {
+    "HALBERD_GRIP_OFFSET", U9PATCH_STUB, U9SYM_HALBERD_ATTACH_OFFSET,
+    12, HALBERD_ROW_EXPECT + 8, 12, U9PF_EXCLUSIVE
+};
+static const U9PatchSpec HALBERD_ROTATION_SPEC = {
+    "HALBERD_GRIP_ROTATION", U9PATCH_STUB, U9SYM_HALBERD_ATTACH_ROTATION,
+    12, HALBERD_ROW_EXPECT + 32, 12, U9PF_EXCLUSIVE
+};
+static float *g_halberdBack;
+
+static float    g_hand[9] = { 0, 0, 0, 1, 1, 1, 0, 0, 0 };
+static int      g_handOn, g_handHooked;
+static volatile LONG g_handApplied;
+#define HALBERD_KEY_HAND 1
+
+static const uint8_t ATTACHADJ_EXPECT[8] = { 0x56, 0x57, 0x8B, 0x3D, 0x2C, 0xEF, 0x79, 0x00 };
+static const U9PatchSpec ATTACHADJ_SPEC = {
+    "HALBERD_GRIP_HAND", U9PATCH_INLINE, U9SYM_ATTACH_ADJUST_APPLY,
+    8, ATTACHADJ_EXPECT, 8, U9PF_EXCLUSIVE
+};
+typedef void (__attribute__((fastcall)) *AttachAdjFn)(int type, int key, float *off, float *scale, void *rot);
+typedef void (U9CALL *RotFromEulerFn)(void *rot, float rx, float ry, float rz);
+static AttachAdjFn o_attachAdj;
+#define DEG_TO_RAD 0.017453292f
+
+static void __attribute__((fastcall)) h_attachAdj(int type, int key, float *off, float *scale, void *rot)
+{
+    if (g_handOn && (type & 0xFFFF) == (int)HALBERD_TYPE && key == HALBERD_KEY_HAND && off && scale && rot) {
+        RotFromEulerFn rf = (RotFromEulerFn)u9sym(U9SYM_ROT_FROM_EULER);
+        off[0] = g_hand[0];   off[1] = g_hand[1];   off[2] = g_hand[2];
+        scale[0] = g_hand[3]; scale[1] = g_hand[4]; scale[2] = g_hand[5];
+        if (rf) rf(rot, g_hand[6] * DEG_TO_RAD, g_hand[7] * DEG_TO_RAD, g_hand[8] * DEG_TO_RAD);
+        InterlockedIncrement(&g_handApplied);
+        return;
+    }
+    o_attachAdj(type, key, off, scale, rot);
+}
+
+static void halberd_grip_log(const char *where, const float *f, const char *why)
+{
+    u9log_line("HALBERD %s (%s): offset %.1f,%.1f,%.1f rotation %.1f,%.1f,%.1f", where, why,
+               (double)f[0], (double)f[1], (double)f[2], (double)f[6], (double)f[7], (double)f[8]);
+}
+
+static int halberd_grip_parse(const char *s, float *f)
+{
+    float v[6];
+    int n = 0;
+    char *end;
+    while (s && *s && n < 6) {
+        while (*s == ' ' || *s == ',') s++;
+        if (!*s) break;
+        v[n] = (float)strtod(s, &end);
+        if (end == s) return 0;
+        s = end;
+        n++;
+    }
+    if (n != 3 && n != 6) return 0;
+    f[0] = v[0]; f[1] = v[1]; f[2] = v[2];
+    if (n == 6) { f[6] = v[3]; f[7] = v[4]; f[8] = v[5]; }
+    return 1;
+}
+
+void u9halberd_command(const char *arg, void (*out)(const char *fmt, ...))
+{
+    const char *v;
+    int back;
+    while (arg && *arg == ' ') arg++;
+    back = arg && !strncmp(arg, "back", 4);
+    if (!arg || (strncmp(arg, "grip", 4) && !back)) {
+        out("usage: halberd grip|back [x y z [rx ry rz] | reset]   grip: in the hand, back: carried");
+        return;
+    }
+    v = arg + 4;
+    while (*v == ' ') v++;
+    if (back) {
+        if (!g_halberdBack) { out("halberd back: its row is not claimed (see the manifest)"); return; }
+        if (!strcmp(v, "reset")) {
+            memcpy(g_halberdBack, HALBERD_ROW_EXPECT + 8, 12);
+            memcpy(g_halberdBack + 6, HALBERD_ROW_EXPECT + 32, 12);
+            halberd_grip_log("back", g_halberdBack, "console reset");
+        } else if (*v) {
+            if (!halberd_grip_parse(v, g_halberdBack)) { out("usage: halberd back x y z [rx ry rz] | reset"); return; }
+            halberd_grip_log("back", g_halberdBack, "console");
+        }
+        out("halberd back: offset %.1f %.1f %.1f  rotation %.1f %.1f %.1f  (the game's: 3 -2 -18  0 0 27)",
+            (double)g_halberdBack[0], (double)g_halberdBack[1], (double)g_halberdBack[2],
+            (double)g_halberdBack[6], (double)g_halberdBack[7], (double)g_halberdBack[8]);
+    } else {
+        if (!g_handHooked) { out("halberd grip: the hand's hook is not installed (see the manifest)"); return; }
+        if (!strcmp(v, "reset")) {
+            g_handOn = 0;
+            out("halberd grip: the game's - nothing applied in the hand");
+            u9log_line("HALBERD grip (console reset): the game's, nothing applied in the hand");
+        } else if (*v) {
+            float f[9];
+            memcpy(f, g_hand, sizeof f);
+            if (!halberd_grip_parse(v, f)) { out("usage: halberd grip x y z [rx ry rz] | reset"); return; }
+            memcpy(g_hand, f, sizeof f);
+            g_handOn = 1;
+            halberd_grip_log("grip", g_hand, "console");
+        }
+        if (g_handOn)
+            out("halberd grip: offset %.1f %.1f %.1f  rotation %.1f %.1f %.1f  (applied %ld times)",
+                (double)g_hand[0], (double)g_hand[1], (double)g_hand[2],
+                (double)g_hand[6], (double)g_hand[7], (double)g_hand[8], (long)g_handApplied);
+        else
+            out("halberd grip: the game's - no adjustment in the hand; set one with halberd grip x y z");
+    }
+    out("a change shows the next time it is attached: put the halberd away and draw it again");
+}
+
+static void halberd_grip_install(void)
+{
+    const char *hand = u9cfg_int("fix_halberd_grip", 1) ? u9cfg_str("halberd_grip", "0,0,-15") : "";
+    const char *back = u9cfg_str("halberd_back", "");
+    uintptr_t row = u9sym(U9SYM_HALBERD_ATTACH_ROW);
+
+    o_attachAdj = (AttachAdjFn)u9patch_install(&ATTACHADJ_SPEC, (void *)h_attachAdj);
+    g_handHooked = o_attachAdj != NULL;
+    if (!g_handHooked) {
+        u9log_line("HALBERD grip: the hand's hook was REFUSED (see the manifest) - held as the game holds it");
+    } else if (hand && *hand) {
+        if (halberd_grip_parse(hand, g_hand)) { g_handOn = 1; halberd_grip_log("grip", g_hand, "halberd_grip"); }
+        else u9log_line("HALBERD: halberd_grip = '%s' not understood - want x,y,z or x,y,z,rx,ry,rz", hand);
+    } else {
+        u9log_line("HALBERD grip: the game's - nothing applied in the hand (fix_halberd_grip off, or halberd_grip empty)");
+    }
+
+    if (!row || memcmp((const void *)row, HALBERD_ROW_EXPECT, 8) != 0) {
+        u9log_line("HALBERD: the AttachAdjust row at 0x%08X is not the halberd's (type 3463, key 3) - back left alone",
+                   (unsigned)row);
+        return;
+    }
+    if (!u9patch_install_bytes(&HALBERD_OFFSET_SPEC, HALBERD_ROW_EXPECT + 8, 12) ||
+        !u9patch_install_bytes(&HALBERD_ROTATION_SPEC, HALBERD_ROW_EXPECT + 32, 12)) {
+        u9log_line("HALBERD: its AttachAdjust row was REFUSED (see the manifest) - carried as the game carries it");
+        return;
+    }
+    g_halberdBack = (float *)(row + 8);
+    if (back && *back && !halberd_grip_parse(back, g_halberdBack))
+        u9log_line("HALBERD: halberd_back = '%s' not understood - want x,y,z or x,y,z,rx,ry,rz", back);
+    halberd_grip_log("back", g_halberdBack, back && *back ? "halberd_back" : "the game's");
+}
+
 static void halberd_install(void)
 {
     o_typeLoad = (TypeLoadFn)u9patch_install(&TYPELOAD_SPEC, (void *)type_load_hook);
     if (!o_typeLoad) { u9log_line("HALBERD: the type-table load call was refused - not restored"); return; }
     halberd_apply("at install");
+    halberd_grip_install();
 
     o_soundAssoc = (SoundAssocFn)u9patch_install(&SOUNDASSOC_SPEC, (void *)h_soundAssoc);
     u9log_line("HALBERD: sounds %s - the battleaxe's (template %u)",

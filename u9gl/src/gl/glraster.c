@@ -568,6 +568,13 @@ static void material_set(const void *mat)
     run_begin();
 }
 
+static void material_forget(void)
+{
+    g_mat = NULL;
+    g_matId = g_matId2 = -1;
+    g_matFlags = 0;
+}
+
 unsigned u9gl_material_recycles(void) { return g_matRecycled; }
 
 void u9gl_set_render_state(unsigned shadow)
@@ -825,7 +832,7 @@ void u9gl_tri(const void *renderer,
 
     {
         GlRun *r = &g_runs[g_runCount - 1];
-        if (r->deferred == 1 && r->count) {
+        if (r->deferred == 1 && r->count && !u9beam_hides(r->texId)) {
             float tz = v0->z;
             if (v1->z < tz) tz = v1->z;
             if (v2->z < tz) tz = v2->z;
@@ -850,6 +857,7 @@ void u9gl_poly(const void *renderer, unsigned count, const void *verts,
     g_renderer = renderer;
     if (!g_fogBSampled) { g_fogBSampled = 1; fogb_sample(); }
     if (g_listPass) mat = NULL;
+    if (!g_runCount) run_begin();
     material_set(mat);
 
     if (mat) {
@@ -2232,6 +2240,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
     g_censusCount = g_censusLost = 0;
     g_count    = 0;
     g_runCount = 0;
+    material_forget();
     run_begin();
 }
 
@@ -2276,6 +2285,7 @@ void u9gl_discard_frame(void)
     g_censusCount = g_censusLost = 0;
     g_count    = 0;
     g_runCount = 0;
+    material_forget();
     run_begin();
 }
 

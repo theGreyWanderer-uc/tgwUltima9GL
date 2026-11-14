@@ -346,7 +346,7 @@ public sealed class Deployer
         var build = BuildIdentity.Identify(_folder.Exe, _knownBuilds);
         if (!build.IsSupported)
             throw new DeployException(DeployProblem.UnsupportedBuild,
-                $"This u9.exe is not a build U9GL supports (SHA-256 {build.Sha256}). U9GL supports the GOG release, 1.19F.");
+                $"This u9.exe is not a build U9GL supports (SHA-256 {build.Sha256}). U9GL supports the GOG and Steam releases, both 1.19F.");
         if (_processes.IsRunning(_folder))
             throw new DeployException(DeployProblem.GameRunning, "u9.exe is running. Quit the game first.");
 

@@ -41,6 +41,7 @@ static void *g_r5Object;
 
 void u9gl_probe_window(const char *when);
 int  u9gl_context_create(void);
+int  u9gl_context_probe(void);
 void u9gl_context_destroy(void);
 void u9gl_bind_renderer(void *renderer);
 
@@ -104,6 +105,11 @@ static int r5_prepare(void)
     if (!u9cfg_int("own_renderer_life", 0)) {
         u9log_line("R5   REFUSED: own_renderer_life is 0, so our slots would "
                    "call Glide's Initialize and open a Glide context");
+        return 0;
+    }
+    if (!u9gl_context_probe()) {
+        u9log_line("R5   REFUSED: this machine gives no OpenGL context (GLCTX probe above) - "
+                   "the game runs on its own Glide renderer, nGlide, as if U9GL were off");
         return 0;
     }
     if (!state) state = build_r5_vtable() ? 1 : -1;

@@ -161,7 +161,7 @@ public static class SettingsCatalog
 
             new("post-pass", SettingPage.Graphics, "Enhanced graphics",
                 "Draws each frame offscreen and finishes it in a second pass. Lamp light, shadows, the "
-                + "night look and gamma below all need it; Off is the original picture.",
+                + "night look and game brightness all need it; Off is the original picture.",
                 [U9gl("gl_post")],
                 [One("On", "gl_post", "1", Works),
                  One("Off (the original picture)", "gl_post", "0", Works)],
@@ -169,7 +169,7 @@ public static class SettingsCatalog
 
             new("lamp-light", SettingPage.Graphics, "Lamp light",
                 "Candles, torches and lamps light the world per pixel and stay on their own side of walls; "
-                + "the original lets them shine through walls. Shadows: the Avatar, furniture and fences shade "
+                + "the original lets them shine through walls. The Avatar, furniture and fences cast shadows on "
                 + "the floor and walls, from up to 8 lamps. Only what is on screen casts a shadow.",
                 [U9gl("gl_light_pools"), U9gl("gl_light_shadows")],
                 [Pair("On", "gl_light_pools", "1", "gl_light_shadows", "1", Partial),
@@ -181,7 +181,7 @@ public static class SettingsCatalog
                 + "roofs shade the rooms under them. They lengthen toward evening and fade at dusk and in storms.",
                 [U9gl("gl_sun_shadows"), U9gl("gl_sun_shadow_memory")],
                 [Pair("On", "gl_sun_shadows", "1", "gl_sun_shadow_memory", "1", Partial),
-                 Pair("Off", "gl_sun_shadows", "0", "gl_sun_shadow_memory", "0", Works)],
+                 Pair("Off (the original)", "gl_sun_shadows", "0", "gl_sun_shadow_memory", "0", Works)],
                 "On"),
 
             new("moon-shadows", SettingPage.Graphics, "Moon shadows",
@@ -189,15 +189,15 @@ public static class SettingsCatalog
                 + "moon, none at new moon, fading at dusk, dawn and in storms.",
                 [U9gl("gl_moon_shadows")],
                 [One("On", "gl_moon_shadows", "1", Works),
-                 One("Off", "gl_moon_shadows", "0", Works)],
+                 One("Off (the original)", "gl_moon_shadows", "0", Works)],
                 "On"),
 
             new("night-grade", SettingPage.Graphics, "Night look",
                 "At night the world is greyed, darkened and cooled, so lamps stand out. It follows the game's own "
-                + "light, so dusk, dawn and storms are part way and dungeons unchanged.",
+                + "light, so it is partly applied at dusk, at dawn and in storms, and not at all in dungeons.",
                 [U9gl("gl_night_grade")],
                 [One("On", "gl_night_grade", "100", Works),
-                 One("Off", "gl_night_grade", "0", Works)],
+                 One("Off (the original)", "gl_night_grade", "0", Works)],
                 "On"),
 
             new("underwater-haze", SettingPage.Graphics, "Underwater haze",
@@ -213,7 +213,7 @@ public static class SettingsCatalog
                 + "whatever stands on it, softer the deeper it lies. Not in caves and dungeons.",
                 [U9gl("gl_under_caustics")],
                 [One("On", "gl_under_caustics", "1", Works),
-                 One("Off", "gl_under_caustics", "0", Works)],
+                 One("Off (the original)", "gl_under_caustics", "0", Works)],
                 "On"),
 
             new("underwater-shafts", SettingPage.Graphics, "Underwater light shafts",
@@ -221,16 +221,16 @@ public static class SettingsCatalog
                 + "fade at dusk, in storms and at night.",
                 [U9gl("gl_under_shafts")],
                 [One("On", "gl_under_shafts", "1", Works),
-                 One("Off", "gl_under_shafts", "0", Works)],
+                 One("Off (the original)", "gl_under_shafts", "0", Works)],
                 "On"),
 
             new("anti-aliasing", SettingPage.Graphics, "Anti-aliasing",
                 "Draws the world at twice the width and height and averages it down, so edges, leaves and "
-                + "distant ground stop shimmering. Costs drawing time.",
+                + "distant ground stop shimmering, at a large cost in speed.",
                 [U9gl("gl_ss_scale")],
                 [One("Off", "gl_ss_scale", "1", Works),
                  One("On (2× supersampling)", "gl_ss_scale", "2", Works)],
-                "On (2× supersampling)"),
+                "Off"),
 
             new("draw-distance", SettingPage.Graphics, "Draw distance",
                 "How far the world is drawn above ground. Further costs drawing time.",
@@ -243,7 +243,8 @@ public static class SettingsCatalog
                 "How far buildings and other objects are drawn above ground; the land goes on to the draw "
                 + "distance. Underground the dungeon draw distance covers both. Further costs drawing time.",
                 [Performance("MiddleClippingPlaneDistance")],
-                [One("4000", "MiddleClippingPlaneDistance", "4000", Works),
+                [One("3500 (the original)", "MiddleClippingPlaneDistance", "3500", Works),
+                 One("4000", "MiddleClippingPlaneDistance", "4000", Works),
                  One("5000", "MiddleClippingPlaneDistance", "5000", Works)],
                 "4000"),
 
@@ -272,7 +273,7 @@ public static class SettingsCatalog
                 "2"),
 
             new("post-gamma", SettingPage.Graphics, "Game brightness",
-                "Applies the game's own brightness setting to the game's window only. Off ignores it, as U9GL did before.",
+                "Applies the game's own brightness setting to the game's window only. Ignored leaves the picture at full brightness.",
                 [U9gl("gl_post_gamma")],
                 [One("Applied", "gl_post_gamma", "1", Works),
                  One("Ignored", "gl_post_gamma", "0", Works)],
@@ -311,7 +312,8 @@ public static class SettingsCatalog
                 "The finished picture (PNG)"),
 
             new("gold-cap", SettingPage.Game, "Gold limit",
-                "The most gold the Avatar can carry. Past 9,999 the backpack shows thousands: 12,345 reads 12.",
+                "The most gold the Avatar can carry. Past 9,999 the backpack counts in thousands and millions, "
+                + "in the purse's own lettering: 12,345 reads 12K.",
                 [U9gl("gold_cap")],
                 [One("9,999 (the original)", "gold_cap", "9999", Works),
                  One("999,999", "gold_cap", "999999", Works)],
@@ -319,7 +321,7 @@ public static class SettingsCatalog
 
             new("backpack", SettingPage.Game, "Backpack and bag",
                 "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold "
-                + "far more. Back on the grid, items past 20 (9 in a bag) drop beside the Avatar.",
+                + "far more. If you switch back to the grid, items past 20 (9 in a bag) drop beside the Avatar.",
                 [U9gl("pack_capacity"), U9gl("free_placement"), U9gl("icon_pixel_hit")],
                 [Backpack("Original grid (20 items, bag 9)", "0", "0", Works),
                  Backpack("Free placement, up to 1,024 items", "1024", "1", Works),
@@ -361,7 +363,8 @@ public static class SettingsCatalog
                 "1500"),
 
             new("metrics-overlay", SettingPage.Game, "Metrics overlay",
-                "Panels: general, objects and textures. Ctrl+F12 cycles them while playing.",
+                "An on-screen panel of frame rate and what the game is drawing: general, objects and "
+                + "textures. Ctrl+F12 cycles them while playing.",
                 [U9gl("metrics_overlay")],
                 [One("On", "metrics_overlay", "1", Works),
                  One("Off at start", "metrics_overlay", "0", Works)],
@@ -369,18 +372,20 @@ public static class SettingsCatalog
 
             Fix("fix-actor-init", "fix_actor_init", "Start new actors with clean memory",
                 $"Prevents the {Faults.F3.InSentence}, and {Faults.F4.InSentence}.", Works),
-            Fix("fix-f3", "fix_f3", "Check actors' target lists",
-                $"Prevents the {Faults.F3.InSentence} when a list is already damaged.", Works),
-            Fix("fix-reload-imm", "fix_reload_imm", "Keep attack timing valid",
-                $"Keeps {Faults.F4.InSentence} from coming back when the game re-registers an actor.", Works),
-            Fix("fix-rebuild-flag", "fix_rebuild_flag", "Rebuild spell tables for new actors",
-                "Makes spellcasting independent of leftover memory, so spellcasters behave the same however the game was started.", Works),
-            Fix("fix-f5", "fix_f5", "Guard the teleport spell",
+            Fix("fix-f3", "fix_f3", "Saves load past damaged creature data",
+                $"Prevents the {Faults.F3.InSentence} when a creature's data is already damaged: the game "
+                + "skips the damaged part instead of crashing.", Works),
+            Fix("fix-reload-imm", "fix_reload_imm", "Hostile NPCs keep attacking",
+                $"Keeps {Faults.F4.InSentence} from coming back when the game sets up a creature again.", Works),
+            Fix("fix-rebuild-flag", "fix_rebuild_flag", "Hostile spellcasters cast",
+                "Some hostile spellcasters never cast a spell, depending on what was left in memory when "
+                + "they were made. This sets them up properly, so they cast every time.", Works),
+            Fix("fix-f5", "fix_f5", "Teleporting spellcasters no longer crash",
                 $"Prevents the {Faults.F5.InSentence}.", LedgerStatus.Partial,
                 "when it steps in, that teleport is cancelled and the spellcaster stays put"),
-            Fix("fix-composed-slot", "fix_composed_slot", "Guard cutscene textures",
+            Fix("fix-composed-slot", "fix_composed_slot", "Cutscenes start and skip safely",
                 $"Prevents the {Faults.F8.InSentence}.", Works),
-            Fix("fix-f7", "watch_f7", "Guard the world while flying",
+            Fix("fix-f7", "watch_f7", "Flying no longer crashes",
                 $"Prevents the {Faults.F7.InSentence}. When the world streams in and out fast, a missing "
                 + "object is noted in the log and skipped.", Works),
             FixGroup("fix-spell-orphans", ["fix_spell_orphans", "fix_spell_caster"],
@@ -487,8 +492,7 @@ public static class SettingsCatalog
                 + "it when working out what can be seen from where you are. Loading a save upsets "
                 + "those marks: the first load clears them, so shut doors count as open until they "
                 + "are used, and a later load can leave a door's doorway marked closed while the door "
-                + "stands open. This puts the marks right from the doors themselves. Nothing changes "
-                + "on screen yet; light through doors and windows will rely on it.",
+                + "stands open. This puts the marks right from the doors themselves.",
                 Works,
                 "after loading a save, the game can treat shut doors as open and open doors as shut, as in the original game"),
             new("fix-shopkeepers", SettingPage.Fixes, "Shopkeepers stay off their counters",

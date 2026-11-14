@@ -2,6 +2,24 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
+## 0.5.6 (2026-11-13)
+
+- **No black screen without OpenGL.** Where the PC cannot run OpenGL at all (a Remote Desktop
+  session, a virtual machine without a graphics driver), the game now starts with its own Glide
+  renderer, as if U9GL were off, instead of a black window that had to be closed by force.
+- **Halberds are held by the shaft,** not by the tip of the blade.
+- **The cathedral's light shaft is smooth,** without the grainy patches in the beam and on the
+  floor.
+- **Anti-aliasing is off in a new install:** it costs too much speed. Turn it on in the Graphics
+  page's "Anti-aliasing".
+- **Fixed: About's "Copy details" closed the launcher** when another program was using the
+  clipboard.
+- **GOG and Steam** are both named as supported wherever the launcher and the readme said GOG
+  alone.
+- **A replacement-texture example:** `textures\example` holds a sample picture that turns part
+  of the sky into a smiley, and a README on making your own replacement textures.
+- Small renderer fixes for stability.
+
 ## 0.5.5 (2026-11-09)
 
 - **Every creature fights back.** Some townsfolk and creatures could chase you and never strike, a
@@ -35,6 +53,7 @@ What changed in each release, for players. Settings named here are in the U9GL l
 - **Diagnostics are off in a new install.**
 - **A download without the .NET runtime** for players who have .NET 10 installed.
 
+## 0.5.4 (2026-11-04)
 
 - **Smoother edges.** Edges are no longer stair-stepped, and leaves and fences shimmer less as
   the camera moves; the belt, bars and compass stay sharp. For the steadiest picture, the

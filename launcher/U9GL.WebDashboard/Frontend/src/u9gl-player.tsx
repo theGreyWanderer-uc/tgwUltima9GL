@@ -214,7 +214,6 @@ export function U9glPlayerPage({ ctx }: { ctx: MetricContext }) {
               {running.map(n => <li key={`spell-${n}`}><strong>{spellName(n)}</strong> <span>spell</span></li>)}
             </ul>
           : <p className="lcars-copy">None.</p>}
-        <p className="lcars-supporting u9gl-section-note">The record's flags the game acts on, and the spells running on or by the Avatar (a spell cast at something shows while it is in flight). Stun and knockdown show while they last.</p>
       </LcarsPanel>
 
       <LcarsPanel band={b(4)} id="player-shrines" title="Shrines" headingLevel="h3" className="u9gl-wide">

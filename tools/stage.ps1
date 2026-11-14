@@ -95,6 +95,9 @@ Copy-Checked (Join-Path $native 'u9log.dll')  'u9log.dll'
 Copy-Checked (Join-Path $native 'dsound.dll') 'dsound.dll'
 if (Test-Path (Join-Path $native 'u9sample.exe')) { Copy-Checked (Join-Path $native 'u9sample.exe') 'u9sample.exe' }
 Copy-Checked (Join-Path $repo 'CHANGELOG.md') 'CHANGELOG.md'
+$example = Join-Path $repo 'u9gl\textures\example'
+New-Item -ItemType Directory -Force (Join-Path $Destination 'textures\example') | Out-Null
+Get-ChildItem $example -File | ForEach-Object { Copy-Checked $_.FullName "textures\example\$($_.Name)" }
 
 $rt = Join-Path $Destination 'runtime'
 if (-not $NoRuntime) {
@@ -124,8 +127,8 @@ The runtime folder is a private copy of Microsoft .NET $Runtime, used only by U9
 Nothing is installed on your system for it.
 "@ }
 $readme = @"
-U9GL $version for Ultima IX: Ascension (the GOG release)
-=========================================================
+U9GL $version for Ultima IX: Ascension (GOG or Steam release)
+==========================================================
 
 This u9gl folder belongs inside the game folder, beside u9.exe:
 

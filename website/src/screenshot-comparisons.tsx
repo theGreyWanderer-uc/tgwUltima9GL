@@ -86,8 +86,8 @@ export function ScreenshotComparisons() {
   return (
     <section id="screenshots" className="screenshot-section site-section site-wrap" aria-labelledby="screenshots-title">
       <p className="eyebrow retro">02 / BEFORE &amp; AFTER</p>
-      <h2 id="screenshots-title" className="retro section-title">See the difference.</h2>
-      <p className="section-intro">{screenshotScenes.length} glimpses of Britannia. Choose a scene, then slide between the before and after screenshots.</p>
+      <h2 id="screenshots-title" className="retro section-title">Experience the difference.</h2>
+      <p className="section-intro">Choose a scene, then slide between the before and after screenshots.</p>
       <div className="comparison-scenes" role="group" aria-label="Choose a screenshot comparison">
         {screenshotScenes.map((option, index) => (
           <PixelButton key={option.id} font="normal" variant={scene.id === option.id ? 'default' : 'outline'} aria-pressed={scene.id === option.id} onClick={() => setScene(option)}>

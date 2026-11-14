@@ -1,4 +1,5 @@
 const dashboardScreenshots = [
+  { file: 'dashboardPlayer.png', title: 'Player', width: 1903, height: 1079, description: 'The Avatar\'s attributes, vitals, class and magic, and status effects.', alt: 'U9GL dashboard Player page showing attributes, hit point, mana and breath bars, class and magic, and status effects.' },
   { file: 'dashboardWorld.png', title: 'World', width: 1904, height: 1079, description: 'Your location in Britannia and the area around you.', alt: 'U9GL dashboard World page showing map coordinates and a grid of the surrounding area.' },
   { file: 'dashboardTextures.png', title: 'Textures', width: 1899, height: 1079, description: 'Texture cache usage and the status of texture overrides.', alt: 'U9GL dashboard Textures page showing a cache usage chart, texture counts and override statistics.' },
   { file: 'dashboardEvents.png', title: 'Events', width: 1897, height: 1079, description: 'A view of the game log, with filters for events and messages.', alt: 'U9GL dashboard Events page showing log filters and a scrolling list of game messages.' },

@@ -148,7 +148,8 @@ void u9give_command(const char *arg, void (*out)(const char *fmt, ...))
     v = arg;
     while (*v && *v != ' ') v++;
     while (*v == ' ') v++;
-    n = atoi(v);
+    for (n = 0; (*v >= '0' && *v <= '9') || *v == ',' || *v == '_'; v++)
+        if (*v >= '0' && *v <= '9' && n < 100000000) n = n * 10 + (*v - '0');
     if (!strncmp(arg, "gold", 4) && (arg[4] == ' ' || !arg[4])) {
         int left, piles = 0;
         if (n < 1) { out("give gold <n>, n at least 1"); return; }

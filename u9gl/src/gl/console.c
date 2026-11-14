@@ -12,6 +12,7 @@
 #include "../fix/fixmem.h"
 #include "../fix/gold.h"
 #include "../fix/playerset.h"
+#include "../fix/fixes.h"
 #include "metrics.h"
 #include "npcscale.h"
 #include "npccmd.h"
@@ -559,6 +560,7 @@ static void execute(char *line)
         out("water [on|off|margin|pad|forget]   is the camera under the water, and the water's height");
         out("beam [on|off|depth|strength]   light shafts (texture 1760) as volumes; post beam: as sent");
         out("rays [on|off|view|strength ...]   sun rays: the sky near the sun blurred toward it");
+        out("halberd grip|back [x y z [rx ry rz]|reset]  the halberd in the hand (grip) or carried (back); redraw to see");
         out("dump [seconds]        a frame dump (as Ctrl+F9) that many seconds from now, 5 by default");
         out("sample [seconds]      a CPU sample (u9sample) that many seconds from now, 5 by default; a notice when done");
         out("post [check|grid|probe|off|on|night ...]  the post pass: status, copy check, world grid, centre position, night grade");
@@ -613,6 +615,8 @@ static void execute(char *line)
         u9under_command(arg, out);
     } else if (!strcmp(cmd, "beam")) {
         u9beam_command(arg, out);
+    } else if (!strcmp(cmd, "halberd")) {
+        u9halberd_command(arg, out);
     } else if (!strcmp(cmd, "rays")) {
         u9rays_command(arg, out);
     } else if (!strcmp(cmd, "dump")) {
@@ -718,7 +722,7 @@ static void paste(void)
 
 static void complete(void)
 {
-    static const char *const cmds[] = { "help", "keys", "pos", "opt", "get", "set", "unset", "tp", "tppos", "list", "lights", "sun", "moon", "fog", "water", "beam", "rays", "dump", "post", "pool", "datum", "gate", "give", "show", "clear", "quit" };
+    static const char *const cmds[] = { "help", "keys", "pos", "opt", "get", "set", "unset", "tp", "tppos", "list", "lights", "sun", "moon", "fog", "water", "beam", "rays", "halberd", "dump", "post", "pool", "datum", "gate", "give", "show", "clear", "quit" };
     static char names[2048];
     const char *pool[64], *cand[64];
     char words[2][IN_W], path[MAX_PATH], *p;

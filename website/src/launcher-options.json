@@ -2,7 +2,7 @@
   "graphics": [
     {
       "title": "Enhanced graphics",
-      "description": "Draws each frame offscreen and finishes it in a second pass. Lamp light, shadows, the night look and gamma below all need it; Off is the original picture.",
+      "description": "Draws each frame offscreen and finishes it in a second pass. Lamp light, shadows, the night look and game brightness all need it; Off is the original picture.",
       "choices": [
         {
           "label": "On",
@@ -16,7 +16,7 @@
     },
     {
       "title": "Lamp light",
-      "description": "Candles, torches and lamps light the world per pixel and stay on their own side of walls; the original lets them shine through walls. Shadows: the Avatar, furniture and fences shade the floor and walls, from up to 8 lamps. Only what is on screen casts a shadow.",
+      "description": "Candles, torches and lamps light the world per pixel and stay on their own side of walls; the original lets them shine through walls. The Avatar, furniture and fences cast shadows on the floor and walls, from up to 8 lamps. Only what is on screen casts a shadow.",
       "choices": [
         {
           "label": "On",
@@ -37,7 +37,7 @@
           "note": ""
         },
         {
-          "label": "Off",
+          "label": "Off (the original)",
           "note": ""
         }
       ]
@@ -51,21 +51,21 @@
           "note": ""
         },
         {
-          "label": "Off",
+          "label": "Off (the original)",
           "note": ""
         }
       ]
     },
     {
       "title": "Night look",
-      "description": "At night the world is greyed, darkened and cooled, so lamps stand out. It follows the game\u0027s own light, so dusk, dawn and storms are part way and dungeons unchanged.",
+      "description": "At night the world is greyed, darkened and cooled, so lamps stand out. It follows the game\u0027s own light, so it is partly applied at dusk, at dawn and in storms, and not at all in dungeons.",
       "choices": [
         {
           "label": "On",
           "note": ""
         },
         {
-          "label": "Off",
+          "label": "Off (the original)",
           "note": ""
         }
       ]
@@ -93,7 +93,7 @@
           "note": ""
         },
         {
-          "label": "Off",
+          "label": "Off (the original)",
           "note": ""
         }
       ]
@@ -107,14 +107,14 @@
           "note": ""
         },
         {
-          "label": "Off",
+          "label": "Off (the original)",
           "note": ""
         }
       ]
     },
     {
       "title": "Anti-aliasing",
-      "description": "Draws the world at twice the width and height and averages it down, so edges, leaves and distant ground stop shimmering. Costs drawing time.",
+      "description": "Draws the world at twice the width and height and averages it down, so edges, leaves and distant ground stop shimmering, at a large cost in speed.",
       "choices": [
         {
           "label": "Off",
@@ -144,6 +144,10 @@
       "title": "Building draw distance",
       "description": "How far buildings and other objects are drawn above ground; the land goes on to the draw distance. Underground the dungeon draw distance covers both. Further costs drawing time.",
       "choices": [
+        {
+          "label": "3500 (the original)",
+          "note": ""
+        },
         {
           "label": "4000",
           "note": ""
@@ -198,7 +202,7 @@
     },
     {
       "title": "Game brightness",
-      "description": "Applies the game\u0027s own brightness setting to the game\u0027s window only. Off ignores it, as U9GL did before.",
+      "description": "Applies the game\u0027s own brightness setting to the game\u0027s window only. Ignored leaves the picture at full brightness.",
       "choices": [
         {
           "label": "Applied",
@@ -220,16 +224,6 @@
         },
         {
           "label": "On",
-          "note": ""
-        }
-      ]
-    },
-    {
-      "title": "Texture detail",
-      "description": "The game\u0027s own textures load at full size. Replacements always draw at their own size.",
-      "choices": [
-        {
-          "label": "Full (the original)",
           "note": ""
         }
       ]
@@ -278,7 +272,7 @@
     },
     {
       "title": "Gold limit",
-      "description": "The most gold the Avatar can carry. Past 9,999 the backpack shows thousands: 12,345 reads 12.",
+      "description": "The most gold the Avatar can carry. Past 9,999 the backpack counts in thousands and millions, in the purse\u0027s own lettering: 12,345 reads 12K.",
       "choices": [
         {
           "label": "9,999 (the original)",
@@ -292,7 +286,7 @@
     },
     {
       "title": "Backpack and bag",
-      "description": "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold far more. Back on the grid, items past 20 (9 in a bag) drop beside the Avatar.",
+      "description": "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold far more. If you switch back to the grid, items past 20 (9 in a bag) drop beside the Avatar.",
       "choices": [
         {
           "label": "Original grid (20 items, bag 9)",
@@ -370,7 +364,7 @@
     },
     {
       "title": "Metrics overlay",
-      "description": "Panels: general, objects and textures. Ctrl\u002BF12 cycles them while playing.",
+      "description": "An on-screen panel of frame rate and what the game is drawing: general, objects and textures. Ctrl\u002BF12 cycles them while playing.",
       "choices": [
         {
           "label": "On",
@@ -395,8 +389,8 @@
       ]
     },
     {
-      "title": "Check actors\u0027 target lists",
-      "description": "Prevents the crash when loading a save when a list is already damaged.",
+      "title": "Saves load past damaged creature data",
+      "description": "Prevents the crash when loading a save when a creature\u0027s data is already damaged: the game skips the damaged part instead of crashing.",
       "choices": [
         {
           "label": "On",
@@ -405,8 +399,8 @@
       ]
     },
     {
-      "title": "Keep attack timing valid",
-      "description": "Keeps hostile NPCs that never attack from coming back when the game re-registers an actor.",
+      "title": "Hostile NPCs keep attacking",
+      "description": "Keeps hostile NPCs that never attack from coming back when the game sets up a creature again.",
       "choices": [
         {
           "label": "On",
@@ -415,8 +409,8 @@
       ]
     },
     {
-      "title": "Rebuild spell tables for new actors",
-      "description": "Makes spellcasting independent of leftover memory, so spellcasters behave the same however the game was started.",
+      "title": "Hostile spellcasters cast",
+      "description": "Some hostile spellcasters never cast a spell, depending on what was left in memory when they were made. This sets them up properly, so they cast every time.",
       "choices": [
         {
           "label": "On",
@@ -425,7 +419,7 @@
       ]
     },
     {
-      "title": "Guard the teleport spell",
+      "title": "Teleporting spellcasters no longer crash",
       "description": "Prevents the crash when a spellcaster teleports.",
       "choices": [
         {
@@ -435,7 +429,7 @@
       ]
     },
     {
-      "title": "Guard cutscene textures",
+      "title": "Cutscenes start and skip safely",
       "description": "Prevents the crash when a cutscene starts or is skipped.",
       "choices": [
         {
@@ -445,7 +439,7 @@
       ]
     },
     {
-      "title": "Guard the world while flying",
+      "title": "Flying no longer crashes",
       "description": "Prevents the crash while flying. When the world streams in and out fast, a missing object is noted in the log and skipped.",
       "choices": [
         {
@@ -627,16 +621,6 @@
     {
       "title": "Doors open and close properly",
       "description": "Some doors swing past closed, wobble, or end up half open but treated as shut, so the next click opens them further. Triggers beside those doors start a second swing while the first is still moving. This lets a door make one swing at a time, keeps a door that stopped short marked open so the next click closes it, and closes doors already left half open in a save.",
-      "choices": [
-        {
-          "label": "On",
-          "note": ""
-        }
-      ]
-    },
-    {
-      "title": "Doors close off rooms properly",
-      "description": "The game marks the doorway a shut door stands in as closed, and does not look through it when working out what can be seen from where you are. Loading a save upsets those marks: the first load clears them, so shut doors count as open until they are used, and a later load can leave a door\u0027s doorway marked closed while the door stands open. This puts the marks right from the doors themselves. Nothing changes on screen yet; light through doors and windows will rely on it.",
       "choices": [
         {
           "label": "On",

@@ -192,6 +192,79 @@ void u9gl_context_destroy(void)
     if (g_cls) { UnregisterClassA(U9GL_CLASS, GetModuleHandleA(NULL)); g_cls = 0; }
 }
 
+int u9gl_context_probe(void)
+{
+    static int answer;
+    static const char CLASS[] = "u9gl_ctxprobe";
+    PIXELFORMATDESCRIPTOR pfd;
+    WNDCLASSA wc;
+    HINSTANCE inst   = GetModuleHandleA(NULL);
+    HDC       prevDc = wglGetCurrentDC();
+    HGLRC     prevRc = wglGetCurrentContext();
+    HWND      wnd = NULL;
+    HDC       dc  = NULL;
+    HGLRC     rc  = NULL;
+    ATOM      cls = 0;
+    DWORD     err = 0;
+    int       pf, ok = 0;
+    const char *failed = "";
+
+    if (answer) return answer > 0;
+
+    memset(&wc, 0, sizeof(wc));
+    wc.lpfnWndProc   = DefWindowProcA;
+    wc.hInstance     = inst;
+    wc.lpszClassName = CLASS;
+    cls = RegisterClassA(&wc);
+    if (!cls) { failed = "RegisterClass"; err = GetLastError(); goto done; }
+    wnd = CreateWindowExA(0, CLASS, CLASS, WS_POPUP, 0, 0, 1, 1, NULL, NULL, inst, NULL);
+    if (!wnd) { failed = "CreateWindowEx"; err = GetLastError(); goto done; }
+    dc = GetDC(wnd);
+    if (!dc) { failed = "GetDC"; err = GetLastError(); goto done; }
+
+    memset(&pfd, 0, sizeof(pfd));
+    pfd.nSize        = sizeof(pfd);
+    pfd.nVersion     = 1;
+    pfd.dwFlags      = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType   = PFD_TYPE_RGBA;
+    pfd.cColorBits   = 32;
+    pfd.cDepthBits   = 24;
+    pfd.cStencilBits = 8;
+    pfd.iLayerType   = PFD_MAIN_PLANE;
+    pf = ChoosePixelFormat(dc, &pfd);
+    if (!pf || !SetPixelFormat(dc, pf, &pfd)) { failed = "pixel format"; err = GetLastError(); goto done; }
+    rc = wglCreateContext(dc);
+    if (!rc) { failed = "wglCreateContext"; err = GetLastError(); goto done; }
+    if (!wglMakeCurrent(dc, rc)) { failed = "wglMakeCurrent"; err = GetLastError(); goto done; }
+
+    {
+        const char *vendor   = (const char *)glGetString(GL_VENDOR);
+        const char *renderer = (const char *)glGetString(GL_RENDERER);
+        const char *version  = (const char *)glGetString(GL_VERSION);
+        u9log_line("GLCTX probe: OpenGL available - %s / %s / %s%s",
+                   vendor   ? vendor   : "(null)",
+                   renderer ? renderer : "(null)",
+                   version  ? version  : "(null)",
+                   renderer && strstr(renderer, "GDI Generic")
+                       ? "  (Microsoft's software renderer: no GPU driver answered; it will draw, slowly)"
+                       : "");
+        ok = 1;
+    }
+
+done:
+    if (!ok)
+        u9log_line("GLCTX probe: NO OpenGL context on this machine - %s failed, err=%lu",
+                   failed, err);
+    if (prevRc) wglMakeCurrent(prevDc, prevRc);
+    else        wglMakeCurrent(NULL, NULL);
+    if (rc)  wglDeleteContext(rc);
+    if (dc)  ReleaseDC(wnd, dc);
+    if (wnd) DestroyWindow(wnd);
+    if (cls) UnregisterClassA(CLASS, inst);
+    answer = ok ? 1 : -1;
+    return ok;
+}
+
 static BOOL CALLBACK enum_one(HWND hwnd, LPARAM lp)
 {
     DWORD pid = 0;
