@@ -100,7 +100,7 @@ jobs:
       # One artifact per file, uploaded as-is (archive: false): the download is the release
       # zip itself, which unzips straight into the game folder as u9gl\. With the default
       # (archive: true) GitHub wrapped each zip in a second zip, and testers had to unzip
-      # twice (user, 2026-11-09). An unarchived artifact is one file, named after it.
+      # twice. An unarchived artifact is one file, named after it.
       - uses: actions/upload-artifact@v7.0.2
         with:
           path: release/u9gl-${{ env.VER }}.zip
@@ -119,11 +119,8 @@ jobs:
           archive: false
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v7.0.2
-        with:
-          name: u9gl-${{ env.VER }}-symbols
-          path: dist/u9gl-${{ env.VER }}/symbols/
-          if-no-files-found: error
+      # No symbols artifact: artifacts are downloadable from a public repo, and the
+      # unstripped DLLs are kept privately (tools/dev/release.ps1).
 
       - name: Draft release
         if: startsWith(github.ref, 'refs/tags/v')
