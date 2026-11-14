@@ -26,7 +26,7 @@ const rendererDetails: FeatureDetailItem[] = [
   },
   {
     title: 'Lighting and atmosphere',
-    description: 'Per-pixel lamp light, lamp shadows, sun and moon shadows, glow and fog give the world a different look. The launcher’s Graphics page lets you choose the lighting and shadow options you want.',
+    description: 'Candles, torches and lamps light the world per pixel and stay on their own side of walls; in the original, their light shines straight through. Sun shadows follow the time of day, lengthen toward evening and fade in storms. At night the moon casts its own, strongest at full moon, and the night look lets lamps stand out after dark. Glow and fog complete the change. The launcher’s Graphics page lets you choose the lighting and shadow options you want.',
   },
   {
     title: 'Finishing the picture',
@@ -37,8 +37,8 @@ const rendererDetails: FeatureDetailItem[] = [
     description: 'The game’s original textures load at full size. The optional replacement-texture system can draw images from a textures folder beside U9GL.exe, at their own size. Each replacement is named for the texture it replaces.',
   },
   {
-    title: 'Built for the GOG release',
-    description: 'U9GL targets the GOG release of Ultima IX: Ascension. The launcher checks the game files before installation. You need your own copy of the game; U9GL supplies the renderer, launcher and fixes.',
+    title: 'Built for the GOG and Steam releases',
+    description: 'U9GL targets the GOG and Steam releases of Ultima IX: Ascension. The launcher checks the game files before installation. You need your own copy of the game; U9GL supplies the renderer, launcher and fixes.',
   },
 ];
 
@@ -60,7 +60,7 @@ const featureGuides = {
   game: {
     title: 'Game settings',
     button: 'Game',
-    description: 'The options on the launcher’s Game page: how the game plays and behaves. Choose an option to see what it does and the choices available.',
+    description: 'The options on the launcher’s Game page: how the game plays and behaves. Some bring back lost content: the game shipped a finished halberd, then left every one in the world as scenery. Usable halberds lets you pick them up and fight with them. Choose an option to see what it does and the choices available.',
     items: launcherOptions.game,
     footer: 'Change these options in the U9GL launcher. Changes apply the next time the game starts.',
   },

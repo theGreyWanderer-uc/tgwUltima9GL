@@ -69,8 +69,8 @@ They are served unchanged and copied verbatim by the public export. Only the act
 pair is rendered, with lazy image loading; the full-size links open the originals.
 These are gameplay captures supplied for the website, rather than extracted assets.
 
-`src/dashboard-gallery.tsx` separately displays the World, Textures and Events
-dashboard captures as ordinary images. Their original PNGs (`dashboardWorld.png`,
+`src/dashboard-gallery.tsx` separately displays the Player, World, Textures and Events
+dashboard captures as ordinary images. Their original PNGs (`dashboardPlayer.png`, `dashboardWorld.png`,
 `dashboardTextures.png`, `dashboardEvents.png`) also live in `public/screenshots/`
 and export unchanged. Each image links to its full-size original; these do not use
 the comparison slider.

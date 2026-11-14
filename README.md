@@ -1,6 +1,6 @@
 # U9GL
 
-An OpenGL renderer, launcher and fixes for **Ultima IX: Ascension** (the GOG release).
+An OpenGL renderer, launcher and fixes for **Ultima IX: Ascension** (the GOG and Steam releases).
 
 U9GL adds a fourth renderer to the game, alongside its DirectX 6, DirectX 7 and Glide ones.
 It also fixes crashes and bugs in the original game and adds optional improvements, all
@@ -11,8 +11,8 @@ source; you do not need to build it to play.
 
 ## What you need
 
-- Ultima IX: Ascension, the **GOG** release. The launcher identifies the game by its files
-  and says plainly if it does not recognise yours.
+- Ultima IX: Ascension, the **GOG** or **Steam** release. Both ship the same game program, and
+  the launcher identifies it by its files and says plainly if it does not recognise yours.
 - Windows, 64-bit. The launcher brings its own copy of .NET, so nothing else needs to be
   installed.
 
@@ -56,8 +56,9 @@ Open an [issue](../../issues) with:
 
 ## Building from source
 
-U9GL works against one build of the game, the GOG `u9.exe`: the native code patches it at
-fixed places and checks the bytes it expects before touching anything.
+U9GL works against one build of the game, the `u9.exe` that GOG and Steam both ship (Steam's
+differs only by a signature): the native code patches it at fixed places and checks the bytes
+it expects before touching anything.
 
 You need, on Windows:
 
@@ -112,7 +113,7 @@ trekcolors (MIT). The bundled .NET runtime is Microsoft's, under its own licence
 ## Not affiliated
 
 U9GL is a fan project. It is not affiliated with or endorsed by Electronic Arts, Origin
-Systems or GOG. Ultima is a trademark of Electronic Arts.
+Systems, GOG or Valve. Ultima is a trademark of Electronic Arts.
 
 ## Generative AI Disclosure
 

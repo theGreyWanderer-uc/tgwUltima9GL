@@ -1635,6 +1635,17 @@ void u9gl_upload_pending(void)
 
         if (p->reuseTex) g_refreshArrived++;
 
+        if (!refresh && g_cacheCount >= U9GL_TEXCACHE &&
+            !cached(p->id, p->id2, p->fmt, U9GL_NO_KEY)) {
+            static unsigned full;
+            full++;
+            if (full <= 4 || (full % 1000) == 0)
+                u9log_line("GLTEX *** cache table full (%u entries, %u MB): "
+                           "id=%d/%d %ux%u not uploaded (%u so far)",
+                           g_cacheCount, (unsigned)(g_texBytes >> 20),
+                           p->id, p->id2, p->w, p->h, full);
+        }
+
         if ((refresh || !cached(p->id, p->id2, p->fmt, U9GL_NO_KEY)) &&
             (refresh || g_cacheCount < U9GL_TEXCACHE) &&
             (rgba = (unsigned char *)HeapAlloc(GetProcessHeap(), 0, n * 4u)) != NULL) {

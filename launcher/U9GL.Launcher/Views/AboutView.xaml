@@ -12,7 +12,7 @@
                 <StackPanel>
                     <TextBlock Text="U9GL" Style="{StaticResource CardTitleStyle}" />
                     <TextBlock Style="{StaticResource SecondaryTextStyle}"
-                               Text="An OpenGL renderer for Ultima IX: Ascension, with fixes for crashes in the game. It needs your own copy of the game, the GOG release, and includes no game data." />
+                               Text="An OpenGL renderer for Ultima IX: Ascension, with fixes for crashes in the game. It needs your own copy of the game, the GOG or Steam release, and includes no game data." />
                     <Grid ColumnDefinitions="*, Auto" Margin="0,12,0,0">
                         <ItemsControl ItemsSource="{Binding Main.AboutDetails}">
                             <ItemsControl.ItemTemplate>

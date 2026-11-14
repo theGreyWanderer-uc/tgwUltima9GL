@@ -116,7 +116,7 @@ public sealed class MainViewModel : ObservableObject
         OpenLogFolderCommand = new RelayCommand(() => OpenFolder(temp));
         OpenBackupFolderCommand = new RelayCommand(() => OpenFolder(Folder.BackupRoot), () => Directory.Exists(Folder.BackupRoot));
         OpenGameFolderCommand = new RelayCommand(() => OpenFolder(Folder.Root));
-        CopyDetailsCommand = new RelayCommand(() => Clipboard.SetText(string.Join(Environment.NewLine, AboutDetails)));
+        CopyDetailsCommand = new RelayCommand(() => DataPage.Copy(string.Join(Environment.NewLine, AboutDetails)));
 
         LoadSettings();
         _log.Write($"U9GL {LauncherVersion.ToString(3)} started for {Folder.Root}");
@@ -254,7 +254,7 @@ public sealed class MainViewModel : ObservableObject
     public string BuildText =>
         _state.Build == null ? "u9.exe was not found in this folder." :
         _state.Build.IsSupported ? $"Ultima IX {_state.Build.Display}" :
-        $"This u9.exe is not one U9GL supports (SHA-256 {_state.Build.Sha256[..16]}...). U9GL supports the GOG release of Ultima IX, 1.19F.";
+        $"This u9.exe is not one U9GL supports (SHA-256 {_state.Build.Sha256[..16]}...). U9GL supports the GOG and Steam releases of Ultima IX, both 1.19F.";
 
     public Tone BuildTone => _state.Build?.IsSupported == true ? Tone.Good : Tone.Bad;
 

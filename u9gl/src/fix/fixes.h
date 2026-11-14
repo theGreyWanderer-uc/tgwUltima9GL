@@ -5,6 +5,8 @@ void u9fix_install(void);
 
 void u9fix_report(void);
 
+void u9halberd_command(const char *arg, void (*out)(const char *fmt, ...));
+
 void u9linehit_tick(void);
 
 void u9fix_los_clamp_tick(void);

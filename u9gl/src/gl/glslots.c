@@ -305,6 +305,7 @@ void *U9CALL u9gl_slot_capture(void *self, unsigned toBuffer)
                     g_capFilled++;
                 }
             }
+            glPixelStorei(GL_PACK_ALIGNMENT, 4);
             wglMakeCurrent(prevDc, prevRc);
         }
     }
