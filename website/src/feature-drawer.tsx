@@ -50,6 +50,13 @@ const featureGuides = {
     items: rendererDetails,
     footer: 'For graphics choices and their effects, open Graphics settings.',
   },
+  display: {
+    title: 'Display settings',
+    button: 'Display',
+    description: 'The options on the launcher’s Display page: the resolution, the window and where it sits, and what the game does when another program is in front. Play full screen, or in a window with a title bar that keeps running, with sound, while you use other programs. Choose an option to see what it does and the choices available.',
+    items: launcherOptions.display,
+    footer: 'Change these options in the U9GL launcher. Changes apply the next time the game starts.',
+  },
   graphics: {
     title: 'Graphics settings',
     button: 'Graphics',

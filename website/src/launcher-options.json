@@ -1,4 +1,164 @@
 {
+  "display": [
+    {
+      "title": "Resolution",
+      "description": "The size the game draws at. The window fits it to the monitor; a 16:9 size fills a 16:9 monitor.",
+      "choices": [
+        {
+          "label": "640 \u00D7 480",
+          "note": ""
+        },
+        {
+          "label": "800 \u00D7 600",
+          "note": ""
+        },
+        {
+          "label": "856 \u00D7 480",
+          "note": ""
+        },
+        {
+          "label": "1024 \u00D7 768",
+          "note": ""
+        },
+        {
+          "label": "1280 \u00D7 720",
+          "note": ""
+        },
+        {
+          "label": "1600 \u00D7 1200",
+          "note": ""
+        },
+        {
+          "label": "1920 \u00D7 1080",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Window",
+      "description": "How big the game\u0027s window is.",
+      "choices": [
+        {
+          "label": "The game\u0027s resolution",
+          "note": "If the resolution is bigger than the monitor, the window is shrunk to fit, keeping its shape."
+        },
+        {
+          "label": "Whole monitor, borderless",
+          "note": ""
+        },
+        {
+          "label": "Fixed 1280 \u00D7 960",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Window frame",
+      "description": "A title bar to drag the window by: switch to another program, then drag it. Needs \u0022Keep playing\u0022 behind other windows. Only when the window is smaller than the monitor; the whole-monitor window always stays borderless.",
+      "choices": [
+        {
+          "label": "Borderless",
+          "note": ""
+        },
+        {
+          "label": "Title bar",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Behind other windows",
+      "description": "Keep the game running, drawing and playing sound while another program is in front, instead of minimising it.",
+      "choices": [
+        {
+          "label": "Keep playing, with sound",
+          "note": ""
+        },
+        {
+          "label": "Keep playing, silent",
+          "note": ""
+        },
+        {
+          "label": "Minimise (the original)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Position on the monitor",
+      "description": "Where the window sits when it is smaller than the monitor.",
+      "choices": [
+        {
+          "label": "Top left",
+          "note": ""
+        },
+        {
+          "label": "Top centre",
+          "note": ""
+        },
+        {
+          "label": "Top right",
+          "note": ""
+        },
+        {
+          "label": "Centre left",
+          "note": ""
+        },
+        {
+          "label": "Centre",
+          "note": ""
+        },
+        {
+          "label": "Centre right",
+          "note": ""
+        },
+        {
+          "label": "Bottom left",
+          "note": ""
+        },
+        {
+          "label": "Bottom centre",
+          "note": ""
+        },
+        {
+          "label": "Bottom right",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Stretch to fill",
+      "description": "With the whole-monitor window, stretch the picture to fill it, interface included.",
+      "choices": [
+        {
+          "label": "Stretch",
+          "note": ""
+        },
+        {
+          "label": "Keep shape, with bars",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Wide screens",
+      "description": "Wider than 4:3, the original loses height and books run off the screen. Keep the 4:3 height for books only, or for the whole game, which shows more at the sides.",
+      "choices": [
+        {
+          "label": "Original",
+          "note": ""
+        },
+        {
+          "label": "Books only",
+          "note": ""
+        },
+        {
+          "label": "Whole game",
+          "note": ""
+        }
+      ]
+    }
+  ],
   "graphics": [
     {
       "title": "Enhanced graphics",
@@ -367,11 +527,11 @@
       "description": "An on-screen panel of frame rate and what the game is drawing: general, objects and textures. Ctrl\u002BF12 cycles them while playing.",
       "choices": [
         {
-          "label": "On",
+          "label": "Off at start",
           "note": ""
         },
         {
-          "label": "Off at start",
+          "label": "On",
           "note": ""
         }
       ]

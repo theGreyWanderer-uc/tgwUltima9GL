@@ -73,6 +73,7 @@ static int gate_check(void)
 
 #include "u9gl_version.h"
 #include "../gl/gltwosided.h"
+#include "../gl/glbackground.h"
 
 static HINSTANCE g_self;
 
@@ -103,6 +104,7 @@ static void attach(void)
     u9freeplace_install();
     u9glpost_install_hooks();
     u9gl_two_sided_install();
+    u9gl_background_install();
 
     u9watch_install();
 

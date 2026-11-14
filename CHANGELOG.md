@@ -2,6 +2,20 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
+## 0.5.7 (2026-11-15)
+
+- **Keep playing behind other windows.** Switch to another program and the game keeps running,
+  drawing and playing its sound, instead of minimising itself. Keys you type elsewhere do not reach
+  it, the mouse moves freely over it, and one click brings it back (Display page: "Behind other
+  windows", with or without sound).
+- **Play in a window.** When the window is smaller than the monitor, it can have a title bar.
+  To move it, switch to another program, drag the title bar, then click back into the game
+  (Display page: "Window frame"; needs "Keep playing" behind other windows). The whole-monitor
+  window stays borderless.
+- **The Ctrl+F12 overlay is off by default.** 0.5.6 showed it to everyone. Updating from 0.5.6
+  turns it off once; press Ctrl+F12 in the game to show it, or choose "On" in the Game page's
+  "Metrics overlay" to start with it.
+
 ## 0.5.6 (2026-11-13)
 
 - **No black screen without OpenGL.** Where the PC cannot run OpenGL at all (a Remote Desktop

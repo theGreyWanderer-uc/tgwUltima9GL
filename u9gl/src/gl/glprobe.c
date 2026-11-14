@@ -13,6 +13,7 @@
 #include "../diag/log.h"
 #include "../injection/config.h"
 #include "../common/u9time.h"
+#include "glbackground.h"
 
 static HWND  g_wnd;
 static HDC   g_dc;
@@ -26,6 +27,11 @@ static ATOM  g_cls;
 
 static HWND g_parent;
 static int  g_detached;
+
+static int  g_frameOn;
+static int  g_userPlaced;
+static int  g_userX, g_userY;
+static void sync_game_window(const char *why);
 
 static BOOL CALLBACK find_game_window(HWND hwnd, LPARAM lp)
 {
@@ -438,11 +444,12 @@ static int u9gl_activate_surface(void)
 
         {
             int  mode  = u9cfg_int("gl_window_size", 0);
-            LONG style = GetWindowLongA(g_wnd, GWL_STYLE);
+            LONG style = GetWindowLongA(g_wnd, GWL_STYLE) & ~(LONG)WS_CAPTION;
             RECT mon;
 
             SetWindowLongA(g_wnd, GWL_STYLE, (mode == 1 || mode == 2)
-                           ? (style & ~(LONG)WS_BORDER) : (style | (LONG)WS_BORDER));
+                           ? style : (style | (LONG)WS_BORDER));
+            g_frameOn = 0;
             if ((mode == 1 || mode == 2) && game_monitor(&mon)) {
                 int mw = (int)(mon.right - mon.left), mh = (int)(mon.bottom - mon.top);
                 int ew = 0, eh = 0;
@@ -468,6 +475,38 @@ static int u9gl_activate_surface(void)
                            mode == 2 ? "fill the monitor, borderless"
                                      : "engine resolution",
                            w, h, ew, eh, mw, mh);
+            }
+
+            if (u9cfg_int("gl_window_frame", 0)) {
+                HMONITOR    hm = MonitorFromWindow(g_parent ? g_parent : g_wnd,
+                                                   MONITOR_DEFAULTTOPRIMARY);
+                MONITORINFO mi;
+                RECT        outer;
+                LONG        framed = (GetWindowLongA(g_wnd, GWL_STYLE) & ~(LONG)WS_BORDER)
+                                     | (LONG)WS_CAPTION;
+                mi.cbSize = sizeof mi;
+                SetRect(&outer, 0, 0, w, h);
+                AdjustWindowRectEx(&outer, (DWORD)framed, FALSE,
+                                   (DWORD)GetWindowLongA(g_wnd, GWL_EXSTYLE));
+                if (mode == 2) {
+                    u9log_line("GLWIN frame: not used - the whole-monitor window stays"
+                               " borderless");
+                } else if (!hm || !GetMonitorInfoA(hm, &mi)) {
+                    u9log_line("GLWIN frame: not used - no monitor information");
+                } else if (outer.right - outer.left > mi.rcWork.right - mi.rcWork.left ||
+                           outer.bottom - outer.top > mi.rcWork.bottom - mi.rcWork.top) {
+                    u9log_line("GLWIN frame: not used - %ldx%ld with its frame does not fit"
+                               " the work area %ldx%ld, so it stays borderless",
+                               outer.right - outer.left, outer.bottom - outer.top,
+                               mi.rcWork.right - mi.rcWork.left,
+                               mi.rcWork.bottom - mi.rcWork.top);
+                } else {
+                    SetWindowLongA(g_wnd, GWL_STYLE, framed);
+                    SetWindowTextA(g_wnd, "Ultima IX");
+                    g_frameOn = 1;
+                    u9log_line("GLWIN frame: a title bar; client %dx%d, outer %ldx%ld",
+                               w, h, outer.right - outer.left, outer.bottom - outer.top);
+                }
             }
         }
 
@@ -517,12 +556,21 @@ static int u9gl_activate_surface(void)
                 MONITORINFO mi;
                 mi.cbSize = sizeof mi;
                 if (mon && GetMonitorInfoA(mon, &mi)) {
-                    int mw  = (int)(mi.rcMonitor.right - mi.rcMonitor.left);
-                    int mh  = (int)(mi.rcMonitor.bottom - mi.rcMonitor.top);
+                    RECT area = g_frameOn ? mi.rcWork : mi.rcMonitor;
+                    RECT outer;
+                    int mw, mh, ow, oh;
                     int col = (anchor - 1) % 3;
                     int row = 2 - (anchor - 1) / 3;
-                    x = (int)mi.rcMonitor.left + col * (mw - w) / 2;
-                    y = (int)mi.rcMonitor.top  + row * (mh - h) / 2;
+                    SetRect(&outer, 0, 0, w, h);
+                    if (g_frameOn)
+                        AdjustWindowRectEx(&outer, (DWORD)GetWindowLongA(g_wnd, GWL_STYLE),
+                                           FALSE, (DWORD)GetWindowLongA(g_wnd, GWL_EXSTYLE));
+                    ow = (int)(outer.right - outer.left);
+                    oh = (int)(outer.bottom - outer.top);
+                    mw = (int)(area.right - area.left);
+                    mh = (int)(area.bottom - area.top);
+                    x = (int)area.left + col * (mw - ow) / 2;
+                    y = (int)area.top  + row * (mh - oh) / 2;
                     u9log_line("GLWIN anchor %d (%s): monitor %dx%d at %d,%d -> window"
                                " %dx%d at %d,%d", anchor, NAMES[anchor], mw, mh,
                                (int)mi.rcMonitor.left, (int)mi.rcMonitor.top,
@@ -533,10 +581,23 @@ static int u9gl_activate_surface(void)
                 }
             }
         }
-        SetWindowPos(g_wnd,
-                     u9cfg_int("gl_topmost", 1) ? HWND_TOPMOST : HWND_TOP,
-                     x, y, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        {
+            int ow = w, oh = h;
+            if (g_frameOn) {
+                RECT outer;
+                SetRect(&outer, 0, 0, w, h);
+                AdjustWindowRectEx(&outer, (DWORD)GetWindowLongA(g_wnd, GWL_STYLE), FALSE,
+                                   (DWORD)GetWindowLongA(g_wnd, GWL_EXSTYLE));
+                ow = (int)(outer.right - outer.left);
+                oh = (int)(outer.bottom - outer.top);
+                if (g_userPlaced) { x = g_userX; y = g_userY; }
+            }
+            SetWindowPos(g_wnd,
+                         u9cfg_int("gl_topmost", 1) ? HWND_TOPMOST : HWND_TOP,
+                         x, y, ow, oh, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
         g_belowForeground = 0;
+        if (g_frameOn) sync_game_window("placed");
     } else {
         SetWindowPos(g_wnd, HWND_TOP, 0, 0, w, h, SWP_SHOWWINDOW);
     }
@@ -557,6 +618,7 @@ HDC u9gl_device_context(void) { return g_dc; }
 HGLRC u9gl_render_context(void) { return g_rc; }
 
 static int g_displayClosed;
+static int g_placementRebaseline;
 
 static const char *msg_name(UINT m)
 {
@@ -589,8 +651,34 @@ LRESULT CALLBACK u9gl_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     static unsigned logged;
     const char *name = msg_name(msg);
 
-    if (msg == WM_NCHITTEST && u9cfg_int("gl_mouse_passthrough", 1))
+    if (msg == WM_NCHITTEST && u9cfg_int("gl_mouse_passthrough", 1)) {
+        if (g_frameOn) {
+            LRESULT r = DefWindowProcA(hwnd, msg, wp, lp);
+            return r == HTCLIENT ? HTTRANSPARENT : r;
+        }
         return HTTRANSPARENT;
+    }
+    if (g_frameOn) {
+        switch (msg) {
+        case WM_MOVE:
+            if (IsWindowVisible(hwnd) && !IsIconic(hwnd)) sync_game_window("moved");
+            break;
+        case WM_EXITSIZEMOVE: {
+            RECT wr;
+            if (GetWindowRect(hwnd, &wr)) {
+                g_userPlaced = 1;
+                g_userX = (int)wr.left;
+                g_userY = (int)wr.top;
+                u9log_line("GLWIN frame: the player moved the window to %d,%d", g_userX,
+                           g_userY);
+            }
+            g_placementRebaseline = 1;
+            break;
+        }
+        default:
+            break;
+        }
+    }
 
     if (name && msg != WM_WINDOWPOSCHANGING && logged < 80) {
         char fg[48];
@@ -722,11 +810,18 @@ static void follow_focus(void)
     if (!fg) return;
     GetWindowThreadProcessId(fg, &pid);
     inFront = pid == GetCurrentProcessId();
+    if (!inFront && g_belowForeground && g_parent && u9gl_background_on() &&
+        GetWindow(g_wnd, GW_HWNDNEXT) != g_parent)
+        SetWindowPos(g_parent, g_wnd, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     if (inFront == !g_belowForeground) return;
 
     g_placementExpectUntil = u9log_frame() + 2;
     SetWindowPos(g_wnd, inFront ? HWND_TOPMOST : HWND_BOTTOM, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    if (!inFront && g_parent && u9gl_background_on())
+        SetWindowPos(g_parent, g_wnd, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     g_belowForeground = !inFront;
     if (logged < 40) {
         char a[48];
@@ -740,6 +835,28 @@ static void follow_focus(void)
                    a);
         u9log_flush();
     }
+}
+
+static void sync_game_window(const char *why)
+{
+    static unsigned logged;
+    RECT cr, gr;
+    POINT tl = {0, 0};
+
+    if (!g_parent || !g_wnd || !IsWindow(g_parent)) return;
+    if (!GetClientRect(g_wnd, &cr) || !ClientToScreen(g_wnd, &tl)) return;
+    if (!GetWindowRect(g_parent, &gr)) return;
+    if (gr.left == tl.x && gr.top == tl.y && gr.right - gr.left == cr.right &&
+        gr.bottom - gr.top == cr.bottom)
+        return;
+    if (logged < 30) {
+        logged++;
+        u9log_line("GLWIN frame: game window %ldx%ld at %ld,%ld -> %ldx%ld at %ld,%ld (%s)",
+                   gr.right - gr.left, gr.bottom - gr.top, gr.left, gr.top,
+                   cr.right, cr.bottom, tl.x, tl.y, why);
+    }
+    SetWindowPos(g_parent, NULL, tl.x, tl.y, cr.right, cr.bottom,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
 
 static int  g_clipOn;

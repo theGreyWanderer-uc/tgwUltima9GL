@@ -8,6 +8,7 @@
 #include "fixmem.h"
 #include "probes.h"
 #include "teleprobe.h"
+#include "focusprobe.h"
 #include "pathprobe.h"
 #include "bagprobe.h"
 #include "birdprobe.h"
@@ -645,6 +646,7 @@ void u9probe_init(void)
     if (u9cfg_int("diag_npc_watch", 0)) u9npc_install();
     u9light_install();
     if (u9cfg_int("diag_travel_watch", 0)) u9travel_install();
+    u9focus_install();
     if (u9cfg_int("diag_trigger_watch", 0)) u9trig_install(0);
     else if (u9cfg_int("diag_shrine_watch", 0)) u9trig_install(1);
     u9player_watch_install();
@@ -705,6 +707,7 @@ void u9probe_report(void)
     u9npc_report();
     u9actor_report();
     u9travel_report();
+    u9focus_report();
     u9trig_report();
     u9player_watch_report();
     u9mesh_report();

@@ -43,6 +43,15 @@ public static partial class U9glIni
 
     public static bool HasBlock(string text) => BlockLine(Lines(text)) >= 0;
 
+    public static Version? BlockVersion(string text)
+    {
+        var lines = Lines(text);
+        int start = BlockLine(lines);
+        if (start < 0) return null;
+        var match = BlockVersionPattern().Match(lines[start]);
+        return match.Success && Version.TryParse(match.Groups[1].Value, out var v) ? v : null;
+    }
+
     public static IReadOnlyList<KeyValuePair<string, string>> ReadBlock(string text)
     {
         var lines = Lines(text);
@@ -156,4 +165,7 @@ public static partial class U9glIni
 
     [GeneratedRegex(@"^# u9gl\.ini defaults (\d+\.\d+\.\d+)", RegexOptions.Multiline)]
     private static partial Regex DefaultsVersionPattern();
+
+    [GeneratedRegex(@"written by U9GL (\d+\.\d+\.\d+)")]
+    private static partial Regex BlockVersionPattern();
 }

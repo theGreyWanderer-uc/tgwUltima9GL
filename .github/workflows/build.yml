@@ -127,10 +127,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The changelog wraps its bullets; GitHub shows each line break in release
+          # notes, so an indented continuation line is joined onto the line above.
           awk -v ver="$VER" '
+            function flush() { if (have) print buf; have = 0 }
             index($0, "## " ver " (") == 1 { on = 1; next }
-            /^## / { on = 0 }
-            on' CHANGELOG.md > notes.md
+            /^## / { flush(); on = 0; next }
+            !on { next }
+            have && buf != "" && /^ +[^ -]/ { sub(/^ +/, ""); buf = buf " " $0; next }
+            { flush(); buf = $0; have = 1 }
+            END { flush() }' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
             echo "CHANGELOG.md has no '## $VER (<date>)' section" >&2
             exit 1

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Button as PixelButton } from './vendor/8bitcn/components/ui/8bit/button';
 import {
   Card as PixelCard,
@@ -25,7 +25,7 @@ function readSiteTheme(): SiteTheme {
 
 const features = [
   { number: '01', title: 'A fourth renderer', description: 'A modern new OpenGL renderer joins the game’s DirectX 6, DirectX 7 and Glide renderers, with improved lighting, glow, fog and shadows.', details: ['renderer'] },
-  { number: '02', title: 'Your settings, together', description: 'Install, choose your graphics and game options and play from one launcher. An optional live web dashboard shows how the game is running.', details: ['graphics', 'game'] },
+  { number: '02', title: 'Your settings, together', description: 'Install, choose your display, graphics and game options and play from one launcher. Play full screen, or in a window that keeps running while you use other programs. An optional live web dashboard shows how the game is running.', details: ['game', 'display', 'graphics'] },
   { number: '03', title: 'Fixes for the original game', description: 'More than 25 fixes for crashes and faults in the original game: hostile NPCs that chase you but never attack, the crash in Lord British’s fight with Blackthorn, slow-motion animation once Windows has been on for about 25 days. They stay enabled in the launcher. Explore what each one changes.', details: ['fixes'] },
 ] as const;
 
@@ -80,7 +80,13 @@ export function U9ProjectSite() {
             {features.map(feature => (
               <PixelCard key={feature.number} font="normal" className="feature-card">
                 <CardHeader font="normal"><span className="feature-number retro">{feature.number}</span><CardTitle font="normal"><h3>{feature.title}</h3></CardTitle></CardHeader>
-                <CardContent font="normal"><p>{feature.description}</p><div className="feature-buttons">{feature.details.map(kind => <FeatureDrawer key={kind} kind={kind} />)}</div></CardContent>
+                <CardContent font="normal"><p>{feature.description}</p><div className="feature-buttons">{feature.details.map((kind, i) => (
+                  <Fragment key={kind}>
+                    <FeatureDrawer kind={kind} />
+                    { }
+                    {feature.details.length === 3 && i === 0 && <span className="feature-buttons-break" aria-hidden="true" />}
+                  </Fragment>
+                ))}</div></CardContent>
               </PixelCard>
             ))}
           </div>

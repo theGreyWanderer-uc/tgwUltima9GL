@@ -8,6 +8,8 @@ public enum SettingPage { Display, Graphics, Game, Fixes, Diagnostics, Managed }
 
 public sealed record SettingKey(SettingFile File, string? Section, string Key);
 
+public sealed record SettingReset(string Key, string Value, Version Before, string Why);
+
 public sealed record SettingChoice(string Label, IReadOnlyDictionary<string, string> Values, LedgerStatus Status, string Note = "");
 
 public sealed record SettingDefinition(
@@ -40,6 +42,12 @@ public static class SettingsCatalog
 
     public static IEnumerable<KeyValuePair<string, string>> ManagedU9glValues() =>
         ValuesOf(All.Where(d => d.Page == SettingPage.Managed));
+
+    public static IReadOnlyList<SettingReset> UpdateResets { get; } =
+    [
+        new("metrics_overlay", "0", new Version(0, 5, 7),
+            "the metrics overlay is off by default since 0.5.7; Ctrl+F12 shows it"),
+    ];
 
     public static IEnumerable<KeyValuePair<string, string>> InitialU9glValues() =>
         ValuesOf(All.Where(d => d.Page != SettingPage.Managed));
@@ -132,6 +140,24 @@ public static class SettingsCatalog
                  One("Whole monitor, borderless", "gl_window_size", "2", Works),
                  One("Fixed 1280 × 960", "gl_window_size", "0", Works)],
                 "The game's resolution"),
+
+            new("window-frame", SettingPage.Display, "Window frame",
+                "A title bar to drag the window by: switch to another program, then drag it. Needs "
+                + "\"Keep playing\" behind other windows. Only when the window is smaller than the "
+                + "monitor; the whole-monitor window always stays borderless.",
+                [U9gl("gl_window_frame")],
+                [One("Borderless", "gl_window_frame", "0", Works),
+                 One("Title bar", "gl_window_frame", "1", Works)],
+                "Borderless"),
+
+            new("background-play", SettingPage.Display, "Behind other windows",
+                "Keep the game running, drawing and playing sound while another program is in front, "
+                + "instead of minimising it.",
+                [U9gl("gl_background_play"), U9gl("gl_background_sound")],
+                [Pair("Keep playing, with sound", "gl_background_play", "1", "gl_background_sound", "1", Works),
+                 Pair("Keep playing, silent", "gl_background_play", "1", "gl_background_sound", "0", Works),
+                 Pair("Minimise (the original)", "gl_background_play", "0", "gl_background_sound", "1", Works)],
+                "Minimise (the original)"),
 
             new("window-anchor", SettingPage.Display, "Position on the monitor",
                 "Where the window sits when it is smaller than the monitor.",
@@ -366,9 +392,9 @@ public static class SettingsCatalog
                 "An on-screen panel of frame rate and what the game is drawing: general, objects and "
                 + "textures. Ctrl+F12 cycles them while playing.",
                 [U9gl("metrics_overlay")],
-                [One("On", "metrics_overlay", "1", Works),
-                 One("Off at start", "metrics_overlay", "0", Works)],
-                "On"),
+                [One("Off at start", "metrics_overlay", "0", Works),
+                 One("On", "metrics_overlay", "1", Works)],
+                "Off at start"),
 
             Fix("fix-actor-init", "fix_actor_init", "Start new actors with clean memory",
                 $"Prevents the {Faults.F3.InSentence}, and {Faults.F4.InSentence}.", Works),
@@ -563,6 +589,8 @@ public static class SettingsCatalog
                 "Changes to NPCs' levels, health and mana, and every creature spawned. Dumps the table at start and exit.", false),
             Diag("diag_travel_watch", "Map changes",
                 "Every map load - pad, door or moongate - with where the Avatar was before and after.", false),
+            Diag("diag_focus_watch", "Focus changes",
+                "Every activation, minimise, close and destroy of the game window, with what the game's quit and focus code would see.", false),
             Diag("diag_linehit_scan", "Collision lists",
                 "Every 30 frames, checks the game's collision lists for shapes left behind or pointing at objects that are gone.", false),
             Diag("diag_trigger_watch", "Triggers",
