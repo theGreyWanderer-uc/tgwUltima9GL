@@ -215,6 +215,38 @@ public sealed partial class DeployerTests
     }
 
     [TestMethod]
+    public void TheOverlayIsSwitchedOffOnceByTheUpdateAfter056()
+    {
+        WriteBundle("0.5.6");
+        NewDeployer("0.5.6").Install();
+        NewDeployer("0.5.6").SaveSettings([new SettingWrite(SettingFile.U9glIni, null, "metrics_overlay", "1")]);
+        Assert.AreEqual(new Version(0, 5, 6), U9glIni.BlockVersion(File.ReadAllText(_folder.U9glIni)));
+
+        WriteBundle("0.5.7");
+        var actions = NewDeployer("0.5.7").Install();
+        Assert.AreEqual("0", U9glIni.Effective(File.ReadAllText(_folder.U9glIni))["metrics_overlay"]);
+        Assert.IsTrue(actions.Any(a => a.StartsWith("metrics_overlay: 1 -> 0, once", StringComparison.Ordinal)), string.Join("; ", actions));
+
+        NewDeployer("0.5.7").SaveSettings([new SettingWrite(SettingFile.U9glIni, null, "metrics_overlay", "1")]);
+        Assert.AreEqual("1", U9glIni.Effective(File.ReadAllText(_folder.U9glIni))["metrics_overlay"]);
+        WriteBundle("0.5.8");
+        actions = NewDeployer("0.5.8").Install();
+        Assert.AreEqual("1", U9glIni.Effective(File.ReadAllText(_folder.U9glIni))["metrics_overlay"]);
+        Assert.IsFalse(actions.Any(a => a.StartsWith("metrics_overlay:", StringComparison.Ordinal)), string.Join("; ", actions));
+    }
+
+    [TestMethod]
+    public void ASaveOnAnOldBlockStillHonoursTheOverlayChoice()
+    {
+        WriteBundle("0.5.6");
+        NewDeployer("0.5.6").Install();
+        NewDeployer("0.5.6").SaveSettings([new SettingWrite(SettingFile.U9glIni, null, "metrics_overlay", "1")]);
+        WriteBundle("0.5.7");
+        NewDeployer("0.5.7").SaveSettings([new SettingWrite(SettingFile.U9glIni, null, "metrics_overlay", "1")]);
+        Assert.AreEqual("1", U9glIni.Effective(File.ReadAllText(_folder.U9glIni))["metrics_overlay"]);
+    }
+
+    [TestMethod]
     public void ASavedSettingTakesItsLineOutOfTheDiagIni()
     {
         NewDeployer().Install();

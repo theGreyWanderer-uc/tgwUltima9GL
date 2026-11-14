@@ -629,6 +629,16 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x0056F4A5u, "Collider_LimbShapesForCylinder: MOV [EBX+0x6C],EDI (89 7B 6C), the exit taken when +0x68 is 0 - same stack depth as 0x0056F388" },
     [U9SYM_CAMHIT_OBJECT_DONE] =
         { 0x00435A47u, "FUN_00435650: MOV ECX,[0x00850228] (8B 0D 28 02 85 00), where both branches meet" },
+    [U9SYM_DEACTIVATE_SHOWWINDOW] =
+        { 0x0073FA7Fu, "Input_DeactivateStub: CALL [0x00740304] (FF 15 04 03 74 00), ShowWindow(game hwnd, SW_SHOWMINIMIZED) between PUSHAD/POPAD" },
+    [U9SYM_SNDBUF_FLAGS_A] =
+        { 0x00532A5Du, "Sound_CreateBufferA: MOV [ESP+0x3C],0x100A0 (C7 44 24 3C A0 00 01 00), DSBUFFERDESC.dwFlags" },
+    [U9SYM_SNDBUF_FLAGS_A3D] =
+        { 0x00532A67u, "Sound_CreateBufferA: MOV [ESP+0x3C],0x300B0 (C7 44 24 3C B0 00 03 00), the 3D variant" },
+    [U9SYM_SNDBUF_FLAGS_B] =
+        { 0x00535032u, "Sound_CreateBufferB: MOV [ESP+0x2C],0x100A0 (C7 44 24 2C A0 00 01 00), DSBUFFERDESC.dwFlags" },
+    [U9SYM_SNDBUF_FLAGS_BNOTIFY] =
+        { 0x0053503Cu, "Sound_CreateBufferB: MOV [ESP+0x2C],0x101A0 (C7 44 24 2C A0 01 01 00), the position-notify variant" },
 };
 
 static uintptr_t RUNTIME[U9SYM_COUNT];

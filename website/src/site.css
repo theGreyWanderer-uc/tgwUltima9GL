@@ -53,6 +53,7 @@ nav { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: center; font-
 .feature-card { height: 100%; }
 .feature-card [data-slot="card-content"] { display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
 .feature-buttons { margin-top: auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; width: 100%; }
+.feature-buttons-break { flex-basis: 100%; height: 0; margin-top: -16px; }
 .feature-guide-button { min-height: 44px; height: auto; max-width: 100%; white-space: normal; padding-block: 10px; font-size: 12px; line-height: 1.7; text-align: center; }
 .feature-number { color: var(--primary); font-size: 11px; margin-bottom: 12px; }
 h3 { font-size: 19px; font-weight: 600; line-height: 1.5; }

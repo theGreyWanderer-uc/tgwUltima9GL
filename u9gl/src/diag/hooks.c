@@ -11,11 +11,13 @@ int u9cfg_int(const char *key, int def);
 #include "log.h"
 #include "../gl/metrics.h"
 #include "../gl/glslots.h"
+#include "../gl/glbackground.h"
 #include "../fix/npcprobe.h"
 #include "../fix/actorwatch.h"
 #include "../fix/playerwatch.h"
 #include "../fix/meshprobe.h"
 #include "../fix/meshstat.h"
+#include "../fix/focusprobe.h"
 #include "../fix/birdprobe.h"
 #include "../fix/portalfix.h"
 #include "../fix/lightwatch.h"
@@ -1215,6 +1217,8 @@ static void U9CALL h_present(U9Renderer *self)
     u9actor_tick();
     u9mesh_tick();
     u9meshstat_tick();
+    u9focus_tick();
+    u9gl_background_tick();
     u9bird_tick();
     u9portal_tick();
     u9light_tick();
@@ -1417,6 +1421,7 @@ int u9hooks_install(void *vtblAddr)
         u9patch_slot(&g_patch, 51, &u9gl_slot_capture);
         u9patch_slot(&g_patch, 52, &u9gl_slot_suspend);
         u9patch_slot(&g_patch, 53, &u9gl_slot_restore_state);
+        u9gl_background_set_owner(1);
         u9log_line("STAGE5 slots 4,13,14,31,40,47,50,51,52,53 are OURS -"
                    " nothing left in the vtable enters Glide");
     }

@@ -44,7 +44,7 @@ strict TypeScript check before producing `dist/`.
 ## Feature guides
 
 The three project cards open `src/feature-drawer.tsx`: a renderer overview, the
-launcher's Graphics options, and the launcher's Fixes entries. Each topic opens a
+launcher's Display, Graphics and Game options, and the launcher's Fixes entries. Each topic opens a
 detail popover inside its drawer. Guides include search and support touch, keyboard,
 Escape dismissal and returning focus to the trigger. The content is informational;
 game settings are changed in the launcher.

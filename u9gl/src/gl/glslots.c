@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include "glpost.h"
+#include "glbackground.h"
 #include "glshot.h"
 #include "u9renderer.h"
 #include "../../addresses.h"
@@ -322,6 +323,7 @@ void U9CALL u9gl_slot_suspend(void *self)
 {
     void *fog;
 
+    if (u9gl_background_keep_running((uintptr_t)__builtin_return_address(0))) return;
     if (DISABLED(self)) return;
     *(unsigned char *)((char *)self + U9_OFF_DISABLED_GUARD) = 1;
     fog = *(void **)((char *)self + U9_OFF_FOG_OBJECT);

@@ -410,7 +410,12 @@ public sealed class Deployer
         if (File.Exists(_folder.U9glIni))
         {
             string current = File.ReadAllText(_folder.U9glIni, Encoding.Latin1);
-            if (U9glIni.HasBlock(current)) values.AddRange(U9glIni.ReadBlock(current));
+            if (U9glIni.HasBlock(current))
+            {
+                var block = U9glIni.ReadBlock(current);
+                values.AddRange(block);
+                AddUpdateResets(block, U9glIni.BlockVersion(current), values, actions);
+            }
             else Backup(manifest, _folder.U9glIni, now, actions);
         }
         values.AddRange(playerValues);
@@ -419,6 +424,21 @@ public sealed class Deployer
         string text = U9glIni.Compose(defaults, values, bundleVersion);
         SafeFile.WriteAllBytes(_folder.U9glIni, Encoding.Latin1.GetBytes(text));
         actions.Add("wrote u9gl\\u9gl.ini");
+    }
+
+    private static void AddUpdateResets(IReadOnlyList<KeyValuePair<string, string>> block, Version? writtenBy,
+        List<KeyValuePair<string, string>> values, List<string> actions)
+    {
+        if (writtenBy is null) return;
+        foreach (var reset in SettingsCatalog.UpdateResets)
+        {
+            if (writtenBy >= reset.Before) continue;
+            int at = -1;
+            for (int i = 0; i < block.Count; i++) if (block[i].Key == reset.Key) at = i;
+            if (at < 0 || block[at].Value == reset.Value) continue;
+            values.Add(new(reset.Key, reset.Value));
+            actions.Add($"{reset.Key}: {block[at].Value} -> {reset.Value}, once ({reset.Why})");
+        }
     }
 
     private void ReleaseFromDiagIni(InstallManifest manifest, IEnumerable<string> keys, DateTime now, List<string> actions)

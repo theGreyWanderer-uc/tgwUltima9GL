@@ -105,6 +105,7 @@ U9LOG_SRC="
     src/fix/npcprobe.c
     src/fix/actorwatch.c
     src/fix/travelprobe.c
+    src/fix/focusprobe.c
     src/fix/playerstats.c
     src/fix/playerwatch.c
     src/fix/playerset.c
@@ -118,6 +119,7 @@ U9LOG_SRC="
     src/fix/gold.c
     src/fix/freeplace.c
     src/gl/glprobe.c
+    src/gl/glbackground.c
     src/gl/metrics.c
     src/gl/gpuprof.c
     src/gl/console.c

@@ -36,18 +36,22 @@ $diagKeys = [System.Collections.Generic.HashSet[string]]::new()
 foreach ($m in [regex]::Matches($catalogText, 'Diag\("([a-z0-9_]+)"')) { [void]$diagKeys.Add($m.Groups[1].Value) }
 [void]$diagKeys.Add($feedKey)
 function Test-DiagKey([string]$k) { return $diagKeys.Contains($k) -or $k -match '^(diag_|stream_)' }
+$playerDefaultKeys = @('metrics_overlay')
+function Test-HeldKey([string]$k) { return (Test-DiagKey $k) -or $playerDefaultKeys -contains $k }
 
 if ($Check) {
     if (-not (Test-Path $Check)) { Write-Error "$Check not found." }
     $pairs = @(Read-IniPairs ([System.IO.File]::ReadAllText($Check, $latin1) -split "`r?`n"))
     $keys = @($pairs | ForEach-Object Key)
     $repeated = @($pairs | Group-Object Key | Where-Object Count -gt 1 | ForEach-Object Name)
-    $absent = @($catalogKeys | Where-Object { -not (Test-DiagKey $_) -and $keys -notcontains $_ } | Sort-Object)
+    $absent = @($catalogKeys | Where-Object { -not (Test-HeldKey $_) -and $keys -notcontains $_ } | Sort-Object)
     $diag = @($keys | Where-Object { (Test-DiagKey $_) })
+    $player = @($keys | Where-Object { $playerDefaultKeys -contains $_ })
     $problems = @()
     if ($repeated.Count) { $problems += "repeats " + ($repeated -join ', ') }
     if ($absent.Count) { $problems += "lacks " + ($absent -join ', ') + " (made before the launcher had them: make it again)" }
     if ($diag.Count) { $problems += "carries diagnostics " + ($diag -join ', ') + " (a fresh install has them off)" }
+    if ($player.Count) { $problems += "carries " + ($player -join ', ') + " (every player starts at the default: make it again)" }
     if ($problems.Count) { Write-Error ("$Check " + ($problems -join '; ') + ".") }
     Write-Host ("u9gl.profile.ini checked: {0} settings, every key the launcher writes, no diagnostic" -f $pairs.Count)
     return
@@ -83,6 +87,11 @@ if (Test-Path $liveDiag) {
 }
 $heldBack = @($profileValues.Keys | Where-Object { (Test-DiagKey $_) })
 foreach ($k in $heldBack) { $profileValues.Remove($k) }
+$playerHeld = @($profileValues.Keys | Where-Object { $playerDefaultKeys -contains $_ })
+foreach ($k in $playerHeld) { $profileValues.Remove($k) }
+if ($playerHeld.Count) {
+    Write-Host ("left at the default for every player: {0}" -f ($playerHeld -join ', '))
+}
 $authorOn = @($pairs | Where-Object { (Test-DiagKey $_.Key) -and $_.Value -ne '0' } | ForEach-Object { "$($_.Key) = $($_.Value)" })
 Write-Host ("diagnostics: {0} left out of the profile, so a fresh install has them off{1}" -f $heldBack.Count,
     $(if ($authorOn.Count) { "; on in the author's settings, not shipped: " + ($authorOn -join ', ') } else { '' }))
