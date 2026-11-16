@@ -2789,9 +2789,15 @@ static void f5_free_stubs(void)
     if (g_soundSrcStub) { VirtualFree(g_soundSrcStub, 0, MEM_RELEASE); g_soundSrcStub = 0; }
 }
 
+int      g_u9ReadCache = 8;
+unsigned g_u9ReadCalls, g_u9ReadAsked;
+
 void u9fix_install(void)
 {
     QueryPerformanceFrequency(&g_qpf);
+    g_u9ReadCache = u9cfg_int("fix_read_cache", 8);
+    if (g_u9ReadCache < 1) g_u9ReadCache = 1;
+    if (g_u9ReadCache > U9READ_SLOTS) g_u9ReadCache = U9READ_SLOTS;
 
     if (!u9build_is_exact()) {
         u9log_line("BUILD not recognised (%s) - no fix will be installed",

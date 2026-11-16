@@ -24,18 +24,22 @@ $latin1 = [System.Text.Encoding]::GetEncoding(28591)
 New-Item -ItemType Directory -Force $Destination | Out-Null
 $releaseProfile = Join-Path $Destination 'u9gl.profile.ini'
 $committedProfile = Join-Path $repo 'u9gl\u9gl.profile.ini'
-if (-not $ProfileFile -and -not $SettingsFrom) {
-    if (-not (Test-Path $committedProfile)) {
-        Write-Error "no release profile: pass -SettingsFrom <game folder> (its launcher settings), or -ProfileFile <file>. Nothing staged."
-    }
+if ($SettingsFrom) {
+    Write-Error ("-SettingsFrom no longer packages the author's live settings: the release ships the committed " +
+                 "u9gl\u9gl.profile.ini. To take settings into it: tools\make-profile.ps1 -SettingsFrom $SettingsFrom -Compare, " +
+                 "then -Apply, review and commit. Nothing staged.")
+}
+if (-not $ProfileFile) {
+    if (-not (Test-Path $committedProfile)) { Write-Error "no release profile: $committedProfile is missing. Nothing staged." }
     $ProfileFile = $committedProfile
 }
-if ($ProfileFile) {
-    & (Join-Path $PSScriptRoot 'make-profile.ps1') -Check $ProfileFile
-    Copy-Item $ProfileFile $releaseProfile -Force
-} else {
-    & (Join-Path $PSScriptRoot 'make-profile.ps1') -Out $releaseProfile -SettingsFrom $SettingsFrom
+& (Join-Path $PSScriptRoot 'make-profile.ps1') -Check $ProfileFile
+if ($env:CI -ne 'true' -and $ProfileFile -eq $committedProfile) {
+    $tests = Join-Path $repo 'launcher\U9GL.Core.Tests'
+    & dotnet test $tests --filter 'FullyQualifiedName~NewPlayerProfileTests' --nologo -v q
+    if ($LASTEXITCODE -ne 0) { Write-Error "u9gl\u9gl.profile.ini fails NewPlayerProfileTests (above) - fix the template, commit, package again. Nothing staged." }
 }
+Copy-Item $ProfileFile $releaseProfile -Force
 
 $stageArgs = @{ Destination = $stage }
 if ($Runtime)     { $stageArgs.Runtime = $Runtime }

@@ -122,6 +122,7 @@ U9LOG_SRC="
     src/gl/glbackground.c
     src/gl/metrics.c
     src/gl/gpuprof.c
+    src/gl/shadowcost.c
     src/gl/console.c
     src/gl/selfsample.c
     src/gl/npcscale.c
@@ -136,6 +137,8 @@ U9LOG_SRC="
     src/gl/glpost.c
     src/gl/glwaterzones.c
     src/gl/gltwosided.c
+    src/gl/glbackface.c
+    src/gl/glanimdraw.c
     src/gl/glspaces.c
     src/gl/glshadow.c
     src/gl/glbloom.c

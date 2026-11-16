@@ -36,6 +36,18 @@ source; you do not need to build it to play.
 To check a download, compare its SHA-256 with the `.sha256` file beside it on the release
 page: in PowerShell, `Get-FileHash u9gl-<version>.zip`.
 
+## Playing from Steam
+
+The Steam release installs the same way: unzip into the game folder, usually
+`C:\Program Files (x86)\Steam\steamapps\common\Ultima IX`, and choose **Install**. If U9GL
+says it cannot write to that folder, right-click `U9GL.exe`, choose **Run as administrator**,
+and install from there.
+
+After that, **Steam's Play button starts the game with U9GL.** You only need `U9GL.exe` to
+change settings. One difference: **Large address space** (more memory for the game, useful
+with replacement textures) applies only when you start the game with U9GL's **Play**, because
+Steam always starts `u9.exe` itself.
+
 ## Update
 
 Unzip the new release over the old `u9gl` folder, run `U9GL.exe` and choose **Update** on its

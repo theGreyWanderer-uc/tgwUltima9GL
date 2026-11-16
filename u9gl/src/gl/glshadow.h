@@ -14,6 +14,10 @@ void        u9gl_beam_report(int texId, void (*out)(const char *fmt, ...));
 unsigned    u9gl_runs_with_texture(int texId, U9CasterFn fn, void *ctx);
 #define U9TEX_LAVA 43
 void        u9shadow_report_near(const float pos[3], float within, void (*line)(const char *fmt, ...));
+void        u9shadow_sun_probe_ray(const U9FrameView *v, const float P[3], const float N[3], const float l[3],
+                                   void (*out)(const char *fmt, ...));
+void        u9shadow_probe_ray(const U9FrameView *v, const float L[3], const float P[3], float range, int slot,
+                               float weight, int fixture, float bias, float slope, void (*line)(const char *fmt, ...));
 const void *u9gl_caster_vertices(int *stride);
 
 #define U9TEX_BLOB_SHADOW 6708
@@ -62,6 +66,9 @@ extern int      g_sunCascades;
 extern unsigned g_sunBuilds, g_sunTris;
 extern int      g_sunMemory, g_sunKeepS;
 extern float    g_sunAbove;
+extern float    g_sunMemMargin;
+extern int      g_sunEvict;
+extern unsigned g_memEvicted;
 extern unsigned g_sunMemLive, g_sunMemDrawn, g_sunMemDropped, g_sunMemSkipped;
 void u9shadow_sun_forget(void);
 
@@ -76,6 +83,18 @@ extern float g_shadowFixture;
 extern float g_shadowColumn;
 extern float g_shadowPart;
 extern unsigned g_shadowBuilds, g_shadowTris, g_shadowFixtures;
+extern int   g_shadowMem;
+extern int   g_shadowMemAnimated;
+extern int   g_lmFaces;
+extern int   g_lmGrid;
+extern int   g_lmRunBox;
+extern int   g_lmKeep;
+extern unsigned g_keepKept, g_keepMade, g_keepChecks, g_keepMismatch;
+extern unsigned g_memRefused;
+void u9shadow_mem_census(void (*out)(const char *fmt, ...), const char *tag, unsigned refused, unsigned sunMaps);
+extern unsigned g_gridChoices, g_gridTested, g_gridListed, g_gridChecks, g_gridMismatch;
+extern int   g_shadowFire;
+extern unsigned g_shadowMemTris, g_shadowMemFix, g_shadowMemUs, g_shadowMemFrames;
 extern unsigned g_shadowRunsDrawn, g_shadowRunsCulled;
 
 #endif

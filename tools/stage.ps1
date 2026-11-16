@@ -140,6 +140,10 @@ This u9gl folder belongs inside the game folder, beside u9.exe:
    backed up in u9gl\backup\ first.
 3. Start the game with Play, or the way you always do. Settings are in U9GL.exe.
 
+Steam: once installed, Steam's Play button starts the game with U9GL. Large address
+space applies only when you start the game with U9GL's Play. If Install cannot write to
+the Steam folder, run U9GL.exe as administrator to install.
+
 To remove U9GL: Uninstall in the dashboard, then delete this folder.
 
 $dotnetNote

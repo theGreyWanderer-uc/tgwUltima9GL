@@ -1,14 +1,18 @@
 param(
-    [string]$Out = '',
     [string]$Check = '',
-    [string]$SettingsFrom = ''
+    [string]$SettingsFrom = '',
+    [switch]$Compare,
+    [switch]$Apply,
+    [string[]]$Keys = @(),
+    [string]$Out = ''
 )
 $ErrorActionPreference = 'Stop'
 
 $repo    = Split-Path $PSScriptRoot -Parent
 $version = (Get-Content (Join-Path $repo 'VERSION') -Raw).Trim()
 $latin1  = [System.Text.Encoding]::GetEncoding(28591)
-if (-not $Out -and -not $Check) { Write-Error "pass -Out <file> to write a profile, or -Check <file> to check one." }
+if ($Out) { Write-Error "-Out is gone: a release ships the committed u9gl\u9gl.profile.ini. Use -SettingsFrom <game folder> -Compare / -Apply to take settings into it." }
+if (-not $Check -and -not $Compare -and -not $Apply) { Write-Error "pass -Check <file>, or -SettingsFrom <game folder> with -Compare or -Apply." }
 
 function Read-IniPairs([string[]]$lines) {
     foreach ($line in $lines) {
@@ -44,73 +48,61 @@ if ($Check) {
     $pairs = @(Read-IniPairs ([System.IO.File]::ReadAllText($Check, $latin1) -split "`r?`n"))
     $keys = @($pairs | ForEach-Object Key)
     $repeated = @($pairs | Group-Object Key | Where-Object Count -gt 1 | ForEach-Object Name)
-    $absent = @($catalogKeys | Where-Object { -not (Test-HeldKey $_) -and $keys -notcontains $_ } | Sort-Object)
     $diag = @($keys | Where-Object { (Test-DiagKey $_) })
     $player = @($keys | Where-Object { $playerDefaultKeys -contains $_ })
     $problems = @()
     if ($repeated.Count) { $problems += "repeats " + ($repeated -join ', ') }
-    if ($absent.Count) { $problems += "lacks " + ($absent -join ', ') + " (made before the launcher had them: make it again)" }
     if ($diag.Count) { $problems += "carries diagnostics " + ($diag -join ', ') + " (a fresh install has them off)" }
     if ($player.Count) { $problems += "carries " + ($player -join ', ') + " (every player starts at the default: make it again)" }
     if ($problems.Count) { Write-Error ("$Check " + ($problems -join '; ') + ".") }
-    Write-Host ("u9gl.profile.ini checked: {0} settings, every key the launcher writes, no diagnostic" -f $pairs.Count)
+    Write-Host ("u9gl.profile.ini checked: {0} settings, no repeat, no diagnostic, no metrics overlay (completeness: NewPlayerProfileTests)" -f $pairs.Count)
     return
 }
 
-if (-not $SettingsFrom) { Write-Error "pass -SettingsFrom <game folder>: the folder whose launcher settings become the profile." }
+if (-not $SettingsFrom) { Write-Error "pass -SettingsFrom <game folder>: the folder whose launcher settings to compare with." }
+$template = Join-Path $repo 'u9gl\u9gl.profile.ini'
 $liveIni  = Join-Path $SettingsFrom 'u9gl\u9gl.ini'
 $liveDiag = Join-Path $SettingsFrom 'u9gl\u9gl.diag.ini'
 $marker   = '# ==== U9GL launcher settings'
+if (-not (Test-Path $template)) { Write-Error "$template not found." }
 if (-not (Test-Path $liveIni)) { Write-Error "$liveIni not found - pass -SettingsFrom <game folder>." }
 
 $liveLines = [System.IO.File]::ReadAllText($liveIni, $latin1) -split "`r?`n"
 $at = [array]::FindIndex($liveLines, [Predicate[string]]{ param($l) $l.TrimStart().StartsWith($marker) })
 if ($at -lt 0) { Write-Error "$liveIni has no launcher block - open its U9GL.exe and Save." }
-$blockFrom = if ($liveLines[$at] -match 'written by (U9GL \S+)') { "saved by " + $Matches[1] } else { 'its launcher block' }
-$pairs = @(Read-IniPairs ($liveLines | Select-Object -Skip ($at + 1)))
-$repeated = @($pairs | Group-Object Key | Where-Object Count -gt 1 | ForEach-Object Name)
-if ($repeated.Count) { Write-Error ("the launcher block in $liveIni repeats {0} - remove the extra lines." -f ($repeated -join ', ')) }
-$blockKeys = @($pairs | ForEach-Object Key)
-$absent = @($catalogKeys | Where-Object { $blockKeys -notcontains $_ } | Sort-Object)
-if ($absent.Count) {
-    Write-Error ("the launcher block in $liveIni lacks {0} - it was written by an older launcher, and Save writes only changed settings. Add them to the block at the values its U9GL.exe shows (back the file up first), then try again." -f ($absent -join ', '))
-}
-
-$profileValues = [ordered]@{}
-foreach ($p in $pairs) { $profileValues[$p.Key] = $p.Value }
+$live = @{}
+foreach ($p in Read-IniPairs ($liveLines | Select-Object -Skip ($at + 1))) { $live[$p.Key] = $p.Value }
 if (Test-Path $liveDiag) {
-    $left = @()
     foreach ($p in Read-IniPairs ([System.IO.File]::ReadAllText($liveDiag, $latin1) -split "`r?`n")) {
-        if ($profileValues.Contains($p.Key) -and -not (Test-DiagKey $p.Key)) { $profileValues[$p.Key] = $p.Value } else { $left += $p.Key }
+        if ($live.ContainsKey($p.Key) -and -not (Test-DiagKey $p.Key)) { $live[$p.Key] = $p.Value }
     }
-    if ($left.Count) { Write-Warning ("u9gl.diag.ini keys not carried (not in the launcher block): {0}" -f (($left | Sort-Object -Unique) -join ', ')) }
 }
-$heldBack = @($profileValues.Keys | Where-Object { (Test-DiagKey $_) })
-foreach ($k in $heldBack) { $profileValues.Remove($k) }
-$playerHeld = @($profileValues.Keys | Where-Object { $playerDefaultKeys -contains $_ })
-foreach ($k in $playerHeld) { $profileValues.Remove($k) }
-if ($playerHeld.Count) {
-    Write-Host ("left at the default for every player: {0}" -f ($playerHeld -join ', '))
-}
-$authorOn = @($pairs | Where-Object { (Test-DiagKey $_.Key) -and $_.Value -ne '0' } | ForEach-Object { "$($_.Key) = $($_.Value)" })
-Write-Host ("diagnostics: {0} left out of the profile, so a fresh install has them off{1}" -f $heldBack.Count,
-    $(if ($authorOn.Count) { "; on in the author's settings, not shipped: " + ($authorOn -join ', ') } else { '' }))
-$extra = @($profileValues.Keys | Where-Object { -not $catalogKeys.Contains($_) })
 
-$profileLines = @(
-    "# u9gl.profile.ini $version - the settings this release installs with.",
-    "# Install writes them once, over U9GL's defaults; after that the launcher's own settings",
-    "# in u9gl.ini win, and an update keeps them. Taken from the author's launcher settings",
-    "# ($blockFrom) on $(Get-Date -Format 'yyyy-MM-dd')."
-)
-foreach ($k in $profileValues.Keys) { $profileLines += "$k = $($profileValues[$k])" }
-$dir = Split-Path -Parent $Out
-if ($dir) { New-Item -ItemType Directory -Force $dir | Out-Null }
-[System.IO.File]::WriteAllText($Out, (($profileLines -join "`r`n") + "`r`n"), $latin1)
-$back = [ordered]@{}
-foreach ($p in Read-IniPairs ([System.IO.File]::ReadAllText($Out, $latin1) -split "`r?`n")) { $back[$p.Key] = $p.Value }
-if ($back.Count -ne $profileValues.Count -or @($profileValues.Keys | Where-Object { $back[$_] -ne $profileValues[$_] }).Count) {
-    Write-Error "u9gl.profile.ini did not read back as written."
+$tLines = [System.IO.File]::ReadAllText($template, $latin1) -split "`r?`n"
+$diffs = [ordered]@{}
+$absentHere = @()
+foreach ($p in Read-IniPairs $tLines) {
+    if (-not $live.ContainsKey($p.Key)) { $absentHere += $p.Key; continue }
+    if ($live[$p.Key] -ne $p.Value) { $diffs[$p.Key] = @($p.Value, $live[$p.Key]) }
 }
-Write-Host ("u9gl.profile.ini: {0} settings from {1}{2}" -f $profileValues.Count, $liveIni,
-            $(if ($extra.Count) { "; beyond the launcher's pages: " + (($extra | ForEach-Object { "$_ = $($profileValues[$_])" }) -join ', ') } else { '' }))
+if ($absentHere.Count) { Write-Host ("not in your launcher block (left as they are): " + ($absentHere -join ', ')) }
+if (-not $diffs.Count) { Write-Host "the template and your settings agree on every key it holds."; return }
+Write-Host ("{0} setting(s) where your settings differ from what a new player starts with:" -f $diffs.Count)
+foreach ($k in $diffs.Keys) { Write-Host ("  {0}: new player {1}, yours {2}" -f $k, $diffs[$k][0], $diffs[$k][1]) }
+if (-not $Apply) { Write-Host "nothing written (-Apply writes them, -Keys a,b only some)."; return }
+
+$take = if ($Keys.Count) { @($Keys | ForEach-Object { $_.ToLowerInvariant() }) } else { @($diffs.Keys) }
+$unknown = @($take | Where-Object { -not $diffs.Contains($_) })
+if ($unknown.Count) { Write-Error ("-Keys names {0}, which the template does not hold at a different value." -f ($unknown -join ', ')) }
+$outLines = foreach ($line in $tLines) {
+    $t = $line.Trim()
+    $eq = $t.IndexOf('=')
+    if ($t -and -not $t.StartsWith('#') -and $eq -gt 0) {
+        $k = $t.Substring(0, $eq).Trim().ToLowerInvariant()
+        if ($take -contains $k) { "$k = $($diffs[$k][1])"; continue }
+    }
+    $line
+}
+$text = ($outLines -join "`r`n").TrimEnd("`r", "`n") + "`r`n"
+[System.IO.File]::WriteAllText($template, $text, $latin1)
+Write-Host ("written into {0}: {1}. Run the launcher tests, look at the diff, commit." -f $template, ($take -join ', '))

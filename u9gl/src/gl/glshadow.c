@@ -2,6 +2,7 @@
 #include <GL/gl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 #include "../diag/log.h"
 #include "../injection/config.h"
@@ -9,6 +10,9 @@
 #include "../common/u9time.h"
 #include "glspaces.h"
 #include "glshadow.h"
+#include "glbackface.h"
+#include "shadowcost.h"
+#include "../common/perfclock.h"
 
 #define GL_FRAMEBUFFER               0x8D40
 #define GL_COLOR_ATTACHMENT0         0x8CE0
@@ -83,6 +87,15 @@ float    g_shadowPart = 96.0f;
 int      g_shadowHideBlob = 1;
 int      g_shadowCount = 8;
 unsigned g_shadowBuilds, g_shadowTris, g_shadowFixtures;
+int      g_shadowMem = 1;
+int      g_shadowMemAnimated = 0;
+int      g_shadowFire = 1;
+unsigned g_shadowMemTris, g_shadowMemFix, g_shadowMemUs, g_shadowMemFrames;
+static unsigned g_shadowMemPeakTris, g_shadowMemPeakUs;
+static unsigned g_shadowMemPrevTris, g_shadowMemPrevFix, g_shadowMemPrevUs;
+static unsigned g_shadowMemChosen;
+static unsigned g_lsWhy[5];
+static uint32_t g_sunBuiltFrame = 0xFFFFFFFFu;
 int      g_sunView, g_sunDebug, g_sunOn;
 float    g_sunStrength = 0.60f;
 int      g_sunSize = 2048;
@@ -308,6 +321,7 @@ static unsigned g_memLogNew, g_memLogDropped;
 
 static int    g_failed, g_loaded;
 static GLuint g_prog, g_fbo, g_cube[U9SHADOW_MAX], g_cubeDepth;
+static float  g_cubeReach[U9SHADOW_MAX];
 static int    g_cubeSize;
 static GLint  uProj, uM0, uM1, uM2, uLight, uFs, uFt, uFm, uNf, uMode, uTop, uTex, uCutout, uAlphaRef;
 
@@ -324,7 +338,7 @@ static const char *const k_vs =
     "varying float v_h;\n"
     "void main() {\n"
     "    vec3 world;\n"
-    "    if (u_mode == 3) {\n"
+    "    if (u_mode == 3 || u_mode == 4) {\n"
     "        world = gl_Vertex.xyz;\n"
     "        gl_TexCoord[0] = vec4(gl_MultiTexCoord0.xy, 0.0, 1.0);\n"
     "    } else {\n"
@@ -336,7 +350,7 @@ static const char *const k_vs =
     "    }\n"
     "    v_rel = world - u_light;\n"
     "    v_h = world.z;\n"
-    "    if (u_mode == 0) {\n"
+    "    if (u_mode == 0 || u_mode == 4) {\n"
     "        float ma = dot(u_fm, v_rel);\n"
     "        float n = u_nf.x, f = u_nf.y;\n"
     "        gl_Position = vec4(dot(u_fs, v_rel), dot(u_ft, v_rel), ma * (f + n) / (f - n) - 2.0 * f * n / (f - n), ma);\n"
@@ -363,7 +377,7 @@ static const char *const k_fs =
     "}\n"
     "void main() {\n"
     "    if (u_cutout != 0 && texture2D(u_tex, gl_TexCoord[0].st).a <= u_alphaRef) discard;\n"
-    "    if (u_mode == 0) { gl_FragColor = vec4(length(v_rel) / u_nf.y); return; }   /* of the reach */\n"
+    "    if (u_mode == 0 || u_mode == 4) { gl_FragColor = vec4(length(v_rel) / u_nf.y); return; }   /* of the reach */\n"
     "    if (u_mode >= 2) { gl_FragColor = vec4(0.5 - 0.5 * dot(u_fm, v_rel) / u_nf.y); return; }   /* 0 sunward */\n"
     "    if (v_h > u_top.w + 128.0) discard;\n"
     "    float band = abs(fract(v_h / 64.0 - 0.5) - 0.5) < fwidth(v_h / 64.0) ? 0.55 : 1.0;\n"
@@ -588,15 +602,28 @@ static void box_run(void *ctx, unsigned first, unsigned count, unsigned glTex, i
     }
 }
 
+static void mem_tick(const U9FrameView *v);
+
 void u9shadow_new_frame(const U9FrameView *v)
 {
     DrawCtx ctx;
     g_nBox = 0;
+    if (g_shadowMemTris > g_shadowMemPeakTris) g_shadowMemPeakTris = g_shadowMemTris;
+    if (g_shadowMemUs > g_shadowMemPeakUs) g_shadowMemPeakUs = g_shadowMemUs;
+    g_shadowMemPrevTris = g_shadowMemTris;
+    g_shadowMemPrevFix = g_shadowMemFix;
+    g_shadowMemPrevUs = g_shadowMemUs;
+    g_shadowMemTris = g_shadowMemFix = g_shadowMemUs = 0;
     if (!g_shadowOn || !v || !v->valid) return;
     memset(&ctx, 0, sizeof ctx);
     ctx.v = v;
     u9gl_casters(box_run, &ctx);
     g_boxFrame = u9log_frame();
+    if (g_shadowMem) {
+        if (!load()) return;
+        mem_tick(v);
+        g_shadowMemFrames++;
+    }
 }
 
 void u9shadow_report_near(const float pos[3], float within, void (*line)(const char *fmt, ...))
@@ -649,15 +676,43 @@ static int sits_on(const float L[3], const float a[3], const float b[3], const f
     return below >= 0.0f && below <= g_shadowNear;
 }
 
+static int fixture_tri(const float L[3], int inRun, int column, const float a[3], const float b[3], const float d[3])
+{
+    float r2 = g_shadowFixture * 0.5f * g_shadowFixture * 0.5f, rc2 = g_shadowColumn * g_shadowColumn;
+    float rp2 = g_shadowPart * g_shadowPart, ra, rb, rd, cx, cy;
+    ra = (a[0] - L[0]) * (a[0] - L[0]) + (a[1] - L[1]) * (a[1] - L[1]);
+    rb = (b[0] - L[0]) * (b[0] - L[0]) + (b[1] - L[1]) * (b[1] - L[1]);
+    rd = (d[0] - L[0]) * (d[0] - L[0]) + (d[1] - L[1]) * (d[1] - L[1]);
+    cx = (a[0] + b[0] + d[0]) / 3.0f - L[0];
+    cy = (a[1] + b[1] + d[1]) / 3.0f - L[1];
+    return (inRun && cx * cx + cy * cy < r2 && ra < r2 && rb < r2 && rd < r2 &&
+            edge2(a, b) < rp2 && edge2(b, d) < rp2 && edge2(d, a) < rp2) ||
+           (column && ra < rc2 && rb < rc2 && rd < rc2) ||
+           (inRun && sits_on(L, a, b, d));
+}
+
+static int mem_fixture_tri(const float L[3], const float a[3], const float b[3], const float d[3])
+{
+    float rf = g_shadowFixture * 0.5f, rf2 = rf * rf, rc2 = g_shadowColumn * g_shadowColumn;
+    float rp2 = g_shadowPart * g_shadowPart;
+    float ra = (a[0] - L[0]) * (a[0] - L[0]) + (a[1] - L[1]) * (a[1] - L[1]);
+    float rb = (b[0] - L[0]) * (b[0] - L[0]) + (b[1] - L[1]) * (b[1] - L[1]);
+    float rd = (d[0] - L[0]) * (d[0] - L[0]) + (d[1] - L[1]) * (d[1] - L[1]);
+    float zlo = a[2] < b[2] ? a[2] : b[2], zhi = a[2] > b[2] ? a[2] : b[2];
+    if (d[2] < zlo) zlo = d[2];
+    if (d[2] > zhi) zhi = d[2];
+    return (ra < rf2 && rb < rf2 && rd < rf2 && zlo >= L[2] - rf && zhi <= L[2] + rf &&
+            edge2(a, b) < rp2 && edge2(b, d) < rp2 && edge2(d, a) < rp2) ||
+           (rc2 > 0.0f && ra < rc2 && rb < rc2 && rd < rc2) ||
+           (ra < rf2 && rb < rf2 && rd < rf2 && sits_on(L, a, b, d));
+}
+
 static void classify_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
 {
     DrawCtx *c = (DrawCtx *)ctx;
     const float *lo, *hi;
     int k, stride;
     const char *base;
-    float r2 = g_shadowFixture * 0.5f * g_shadowFixture * 0.5f, rc2 = g_shadowColumn * g_shadowColumn;
-    float rp2 = g_shadowPart * g_shadowPart;
-    float ra, rb, rd;
     int inRun, column;
     unsigned at = c->idx++, t, kept = 0, off;
     (void)glTex; (void)cutout;
@@ -682,19 +737,11 @@ static void classify_run(void *ctx, unsigned first, unsigned count, unsigned glT
     base = (const char *)u9gl_caster_vertices(&stride);
     off = g_indexN;
     for (t = first; t + 2 < first + count; t += 3) {
-        float a[3], b[3], d[3], cx, cy;
+        float a[3], b[3], d[3];
         if (!world_of(c->v, (const float *)(base + (size_t)t * (size_t)stride), a) ||
             !world_of(c->v, (const float *)(base + (size_t)(t + 1) * (size_t)stride), b) ||
             !world_of(c->v, (const float *)(base + (size_t)(t + 2) * (size_t)stride), d)) continue;
-        ra = (a[0] - c->light[0]) * (a[0] - c->light[0]) + (a[1] - c->light[1]) * (a[1] - c->light[1]);
-        rb = (b[0] - c->light[0]) * (b[0] - c->light[0]) + (b[1] - c->light[1]) * (b[1] - c->light[1]);
-        rd = (d[0] - c->light[0]) * (d[0] - c->light[0]) + (d[1] - c->light[1]) * (d[1] - c->light[1]);
-        cx = (a[0] + b[0] + d[0]) / 3.0f - c->light[0];
-        cy = (a[1] + b[1] + d[1]) / 3.0f - c->light[1];
-        if ((inRun && cx * cx + cy * cy < r2 && ra < r2 && rb < r2 && rd < r2 &&
-             edge2(a, b) < rp2 && edge2(b, d) < rp2 && edge2(d, a) < rp2) ||
-            (column && ra < rc2 && rb < rc2 && rd < rc2) ||
-            (inRun && sits_on(c->light, a, b, d))) {
+        if (fixture_tri(c->light, inRun, column, a, b, d)) {
             c->fixtures++;
             continue;
         }
@@ -766,16 +813,21 @@ static void draw_run(void *ctx, unsigned first, unsigned count, unsigned glTex, 
     }
 }
 
-static void begin_casters(const U9FrameView *v)
+static void frame_pointers(void)
 {
     int stride;
     const char *base = (const char *)u9gl_caster_vertices(&stride);
+    glVertexPointer(3, GL_FLOAT, stride, base);
+    glTexCoordPointer(4, GL_FLOAT, stride, base + 12);
+}
+
+static void begin_casters(const U9FrameView *v)
+{
     glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
-    glVertexPointer(3, GL_FLOAT, stride, base);
-    glTexCoordPointer(4, GL_FLOAT, stride, base + 12);
+    frame_pointers();
     fUseProgram(g_prog);
     fUniform4f(uProj, v->sx, v->sy, v->cx, v->cy);
     fUniform4f(uM0, v->m[0], v->m[1], v->m[2], v->m[3]);
@@ -803,14 +855,21 @@ static void end_casters(void)
     glPopClientAttrib();
 }
 
+static unsigned lamp_select(const float L[3], float reach, int fixture, int slot);
+static void     lamp_mem_draw(int face);
+
 GLuint u9shadow_build(const U9FrameView *v, const float pos[3], float reach, int slot, int fixture)
 {
+    unsigned memTris = 0;
     static const float S[6][3] = { {0,0,-1}, {0,0,1}, {1,0,0}, {1,0,0}, {1,0,0}, {-1,0,0} };
     static const float T[6][3] = { {0,-1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}, {0,-1,0}, {0,-1,0} };
     static const float M[6][3] = { {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1} };
     DrawCtx ctx;
     int f;
+    uint64_t tin[U9SC_IN_N], tq = 0, tn;
+#define SC_MARK(part) do { if (g_scostOn) { tn = u9perf_now(); tin[part] += tn - tq; tq = tn; } } while (0)
     if (!g_shadowOn || g_failed || !v || !v->valid || slot < 0 || slot >= U9SHADOW_MAX) return 0;
+    if (g_scostOn) { memset(tin, 0, sizeof tin); tq = u9perf_now(); }
     if (!load()) return 0;
     if (g_shadowSize < 64) g_shadowSize = 64;
     if (g_shadowSize > 2048) g_shadowSize = 2048;
@@ -824,15 +883,20 @@ GLuint u9shadow_build(const U9FrameView *v, const float pos[3], float reach, int
     fUniform1i(uMode, 0);
     fUniform3f(uLight, pos[0], pos[1], pos[2]);
     fUniform2f(uNf, 4.0f, reach > 16.0f ? reach : 16.0f);
+    g_cubeReach[slot] = reach > 16.0f ? reach : 16.0f;
     memset(&ctx, 0, sizeof ctx);
     ctx.v = v;
     ctx.light[0] = pos[0]; ctx.light[1] = pos[1]; ctx.light[2] = pos[2];
     ctx.reach = reach;
     ctx.noFixture = !fixture;
     g_indexN = 0;
+    SC_MARK(U9SC_IN_SETUP);
     u9gl_casters(classify_run, &ctx);
     g_shadowFixtures = ctx.fixtures;
     ctx.useSkip = 1;
+    SC_MARK(U9SC_IN_FIXTURE);
+    if (g_shadowMem) memTris = lamp_select(pos, reach, fixture, slot);
+    SC_MARK(U9SC_IN_SELECT);
     for (f = 0; f < 6; f++) {
         ctx.idx = 0;
         ctx.face = f;
@@ -841,11 +905,18 @@ GLuint u9shadow_build(const U9FrameView *v, const float pos[3], float reach, int
         fUniform3f(uFs, S[f][0], S[f][1], S[f][2]);
         fUniform3f(uFt, T[f][0], T[f][1], T[f][2]);
         fUniform3f(uFm, M[f][0], M[f][1], M[f][2]);
+        SC_MARK(U9SC_IN_SWITCH);
         u9gl_casters(draw_run, &ctx);
+        SC_MARK(U9SC_IN_RUNS);
+        if (memTris) lamp_mem_draw(f);
+        SC_MARK(U9SC_IN_MEM);
     }
     end_casters();
     fBindFramebuffer(GL_FRAMEBUFFER, 0);
     glPopAttrib();
+    SC_MARK(U9SC_IN_FINISH);
+    if (g_scostOn) u9scost_inside(tin, ctx.idx, ctx.drawn, ctx.culled);
+#undef SC_MARK
     g_shadowBuilds++;
     g_shadowTris = ctx.tris;
     g_shadowRunsDrawn = ctx.drawn;
@@ -917,6 +988,8 @@ typedef struct {
     DWORD    seen;
     GLuint   tex;
     unsigned char cutout, live;
+    unsigned char anim;
+    float    avD, camD;
 } SunTri;
 static SunTri *g_mem;
 static int    *g_memHash;
@@ -929,7 +1002,10 @@ static int     g_memHaveCam;
 static SunTri **g_memList;
 static float   *g_memVtx, *g_memTc;
 static int      g_memListN, g_memCap;
+static unsigned g_memListVer = 1;
+static unsigned g_memContent = 1;
 static unsigned char *g_memFresh;
+static unsigned char *g_memSkip;
 static float   *g_memVtxB, *g_memTcB;
 static int      g_memListB, g_memRunStartB[SUN_MEM_MAX + 1];
 static int      g_memBetween;
@@ -938,6 +1014,8 @@ static int      g_memPassNow;
 static void mem_clear(void)
 {
     g_memN = g_memDead = g_memListN = 0;
+    g_memListVer++;
+    g_memContent++;
     if (g_memHash) memset(g_memHash, 0, SUN_MEM_HASH * sizeof *g_memHash);
 }
 
@@ -964,13 +1042,27 @@ typedef struct {
     const U9FrameView *v;
     float camX, camY, camZ, reach2;
     DWORD now;
+    float av[3];
+    int   haveAv;
 } MemCtx;
 
+int u9avatar_position(int *x, int *y, int *z);
+unsigned g_memRefused;
+
+#define MEM_DIAG_AV 80.0f
+static unsigned g_memDiagAvKept, g_memDiagAvOldest;
+static unsigned g_memDiagAnimKept, g_memDiagAnimOldest;
+#define MEM_GHOST_MS 3000u
+int  u9gl_caster_anim(void);
+void u9gl_anim_draw_stats(unsigned *objects, unsigned *lastObjects);
+int  u9gl_anim_draw_installed(void);
+
 #define SUN_MEM_SHADOW_REACH 2000.0f
+float g_sunMemMargin = 2000.0f;
 static float mem_reach(float range)
 {
     float r = range * 1.5f;
-    if (g_sunFadeTo > g_sunFadeFrom && g_sunFadeTo + SUN_MEM_SHADOW_REACH < r) r = g_sunFadeTo + SUN_MEM_SHADOW_REACH;
+    if (g_sunFadeTo > g_sunFadeFrom && g_sunFadeTo + g_sunMemMargin < r) r = g_sunFadeTo + g_sunMemMargin;
     return r;
 }
 
@@ -981,6 +1073,7 @@ static void mem_collect(void *ctx, unsigned first, unsigned count, unsigned glTe
     const char *base = (const char *)u9gl_caster_vertices(&stride);
     float edgeX = c->v->engineW - 1.5f, edgeY = c->v->engineH - 1.5f;
     unsigned t;
+    if (!g_shadowMemAnimated && u9gl_caster_anim()) return;
     for (t = first; t + 2 < first + count; t += 3) {
         float w[3][3], st[3][2], e1[3], e2[3], n[3], area, scale;
         unsigned a = 2166136261u, b = 16777619u, s;
@@ -1019,7 +1112,7 @@ static void mem_collect(void *ctx, unsigned first, unsigned count, unsigned glTe
             if (e->keyA == a && e->keyB == b) break;
         }
         if (!g_memHash[s]) {
-            if (g_memN >= SUN_MEM_MAX) continue;
+            if (g_memN >= SUN_MEM_MAX) { g_memRefused++; continue; }
             g_memHash[s] = ++g_memN;
             g_mem[g_memN - 1].keyA = a;
             g_mem[g_memN - 1].keyB = b;
@@ -1028,6 +1121,14 @@ static void mem_collect(void *ctx, unsigned first, unsigned count, unsigned glTe
         }
         {
             SunTri *e = &g_mem[g_memHash[s] - 1];
+            {
+                float mx = (w[0][0] + w[1][0] + w[2][0]) / 3.0f, my = (w[0][1] + w[1][1] + w[2][1]) / 3.0f;
+                float mz = (w[0][2] + w[1][2] + w[2][2]) / 3.0f, ax = mx - c->av[0], ay = my - c->av[1];
+                float az = mz - c->av[2], cx = mx - c->camX, cy = my - c->camY, cz = mz - c->camZ;
+                e->avD = c->haveAv ? sqrtf(ax * ax + ay * ay + az * az) : -1.0f;
+                e->camD = sqrtf(cx * cx + cy * cy + cz * cz);
+            }
+            e->anim = (unsigned char)u9gl_caster_anim();
             if (e->live && clipped && area < e->area * 0.9f) {
                 e->seen = c->now;
                 e->partial = g_memFrame;
@@ -1066,6 +1167,7 @@ static int mem_cmp(const void *x, const void *y)
 }
 
 static void mem_runs(void);
+static void mem_content(void);
 
 #define MEM_GROUP_TEX  1024
 #define MEM_GROUP_HASH 2048
@@ -1111,6 +1213,56 @@ static int mem_group(int n)
     return 1;
 }
 
+int             g_sunEvict = 1;
+unsigned        g_memEvicted;
+#define EVICT_ROOM  8192
+#define EVICT_KEEP  (SUN_MEM_MAX - EVICT_ROOM)
+static unsigned char g_evBin[SUN_MEM_MAX];
+
+static int mem_evict(const U9FrameView *v, int n, float r2)
+{
+    unsigned hist[256], need, acc = 0;
+    int i, k, t, out = 0, takeT;
+    if (!g_sunEvict || n <= EVICT_KEEP || r2 <= 0.0f) return n;
+    need = (unsigned)(n - EVICT_KEEP);
+    memset(hist, 0, sizeof hist);
+    for (i = 0; i < n; i++) {
+        const SunTri *e = g_memList[i];
+        float mx, my, d2;
+        int b;
+        if (e->frame == g_memFrame) { g_evBin[i] = 0; continue; }
+        mx = (e->p[0][0] + e->p[1][0] + e->p[2][0]) / 3.0f - v->m[3];
+        my = (e->p[0][1] + e->p[1][1] + e->p[2][1]) / 3.0f - v->m[7];
+        d2 = mx * mx + my * my;
+        b = (int)(d2 / r2 * 255.0f) + 1;
+        if (b > 255) b = 255;
+        if (b < 1) b = 1;
+        g_evBin[i] = (unsigned char)b;
+        hist[b]++;
+    }
+    for (t = 255; t >= 1; t--) {
+        if (acc + hist[t] >= need) break;
+        acc += hist[t];
+    }
+    if (t < 1) t = 1;
+    takeT = (int)(need - acc);
+    for (i = 0; i < n; i++) {
+        SunTri *e = g_memList[i];
+        k = g_evBin[i];
+        if (k > t || (k == t && k >= 1 && takeT > 0)) {
+            if (k == t) takeT--;
+            e->live = 0;
+            g_memDead++;
+            g_sunMemDropped++;
+            g_memEvicted++;
+            if (g_sunMemLive) g_sunMemLive--;
+            continue;
+        }
+        g_memList[out++] = e;
+    }
+    return out;
+}
+
 static void mem_update(const U9FrameView *v, float range)
 {
     DWORD now = u9time_now();
@@ -1121,24 +1273,29 @@ static void mem_update(const U9FrameView *v, float range)
     camAt[0] = v->m[3]; camAt[1] = v->m[7]; camAt[2] = v->m[11];
     inRoom = u9spaces_at(camAt, NULL, 0, NULL) >= 0;
     g_memListN = 0;
+    g_memListVer++;
     if (g_memCap < g_memN) {
         int nc = g_memN + 4096;
         SunTri **l2 = (SunTri **)realloc(g_memList, (size_t)nc * sizeof *l2);
         float *v2 = (float *)realloc(g_memVtx, (size_t)nc * 9 * sizeof *v2);
         float *t2 = (float *)realloc(g_memTc, (size_t)nc * 6 * sizeof *t2);
         unsigned char *f2 = (unsigned char *)realloc(g_memFresh, (size_t)nc);
+        unsigned char *k2 = (unsigned char *)realloc(g_memSkip, (size_t)nc);
         float *vb = (float *)realloc(g_memVtxB, (size_t)nc * 9 * sizeof *vb);
         float *tb = (float *)realloc(g_memTcB, (size_t)nc * 6 * sizeof *tb);
         if (l2) g_memList = l2;
         if (v2) g_memVtx = v2;
         if (t2) g_memTc = t2;
         if (f2) g_memFresh = f2;
+        if (k2) g_memSkip = k2;
         if (vb) g_memVtxB = vb;
         if (tb) g_memTcB = tb;
-        if (!l2 || !v2 || !t2 || !f2 || !vb || !tb) return;
+        if (!l2 || !v2 || !t2 || !f2 || !k2 || !vb || !tb) return;
         g_memCap = nc;
     }
     g_sunMemLive = 0;
+    g_memDiagAvKept = g_memDiagAvOldest = 0;
+    g_memDiagAnimKept = g_memDiagAnimOldest = 0;
     for (i = 0; i < g_memN; i++) {
         SunTri *e = &g_mem[i];
         float mid[3], dx, dy;
@@ -1158,8 +1315,17 @@ static void mem_update(const U9FrameView *v, float range)
             continue;
         }
         g_sunMemLive++;
+        if (e->anim) {
+            g_memDiagAnimKept++;
+            if ((unsigned)(now - e->seen) > g_memDiagAnimOldest) g_memDiagAnimOldest = (unsigned)(now - e->seen);
+        }
+        if (e->avD >= 0.0f && e->avD < MEM_DIAG_AV) {
+            g_memDiagAvKept++;
+            if ((unsigned)(now - e->seen) > g_memDiagAvOldest) g_memDiagAvOldest = (unsigned)(now - e->seen);
+        }
         g_memList[n++] = e;
     }
+    n = mem_evict(v, n, r2);
     g_sunMemDrawn = (unsigned)n;
     if (n) {
         if (!mem_group(n)) qsort(g_memList, (size_t)n, sizeof *g_memList, mem_cmp);
@@ -1171,12 +1337,38 @@ static void mem_update(const U9FrameView *v, float range)
     }
     g_memListN = n;
     mem_runs();
+    mem_content();
     if ((g_memDead > g_memN / 2 && g_memDead > 1024) || (g_memDead && g_memN > SUN_MEM_MAX - 1024))
         mem_rehash();
 }
 
 static GLuint g_memRunTex[SUN_MEM_MAX];
 static int    g_memRunStart[SUN_MEM_MAX + 1], g_memRunCut[SUN_MEM_MAX], g_memRuns;
+
+int             g_lmKeep = 1;
+static unsigned g_memFpA, g_memFpB;
+static int      g_memFpN = -1, g_memFpRuns = -1;
+unsigned        g_keepKept, g_keepMade, g_keepChecks, g_keepMismatch;
+
+static void mem_content(void)
+{
+    const unsigned *w = (const unsigned *)g_memVtx;
+    unsigned a = 2166136261u, b = 0x9E3779B9u;
+    int i, n = g_memListN * 9;
+    for (i = 0; i < n; i++) {
+        a = (a ^ w[i]) * 16777619u;
+        b = (b + w[i]) * 0x85EBCA6Bu;
+        b ^= b >> 13;
+    }
+    for (i = 0; i <= g_memRuns; i++) {
+        a = (a ^ (unsigned)g_memRunStart[i]) * 16777619u;
+        b = (b + (unsigned)g_memRunStart[i]) * 0xC2B2AE35u;
+        b ^= b >> 16;
+    }
+    if (!g_lmKeep || a != g_memFpA || b != g_memFpB || g_memListN != g_memFpN || g_memRuns != g_memFpRuns)
+        g_memContent++;
+    g_memFpA = a; g_memFpB = b; g_memFpN = g_memListN; g_memFpRuns = g_memRuns;
+}
 
 static void mem_runs(void)
 {
@@ -1191,30 +1383,39 @@ static void mem_runs(void)
         g_memRuns++;
     }
     g_memRunStart[g_memRuns] = g_memListN;
+    g_memListVer++;
 }
+
+static uint32_t g_memBFrame = 0xFFFFFFFFu;
 
 static void mem_between(const U9FrameView *v, int pass)
 {
-    int r, i, n = 0;
-    g_memBetween = !pass && g_memListN && g_memFresh && g_memVtxB && g_memTcB;
-    if (!g_memBetween) return;
+    int r, i, n = 0, ok = g_memListN && g_memFresh && g_memVtxB && g_memTcB;
+    int wantB = !pass && ok, wantSkip = ok && g_shadowMem && g_memSkip;
+    g_memBetween = wantB;
+    if (!wantB && !wantSkip) return;
     for (r = 0; r < g_memRuns; r++) {
-        g_memRunStartB[r] = n;
+        if (wantB) g_memRunStartB[r] = n;
         for (i = g_memRunStart[r]; i < g_memRunStart[r + 1]; i++) {
             const float *p = g_memVtx + i * 9;
             float mid[3];
-            int k;
+            int k, skip = 0;
             if (g_memFresh[i]) {
                 for (k = 0; k < 3; k++) mid[k] = (p[k] + p[3 + k] + p[6 + k]) / 3.0f;
-                if (on_screen(v, mid)) continue;
+                skip = on_screen(v, mid);
             }
+            if (wantSkip) g_memSkip[i] = (unsigned char)skip;
+            if (skip || !wantB) continue;
             memcpy(g_memVtxB + n * 9, p, 9 * sizeof(float));
             memcpy(g_memTcB + n * 6, g_memTc + i * 6, 6 * sizeof(float));
             n++;
         }
     }
-    g_memRunStartB[g_memRuns] = n;
-    g_memListB = n;
+    if (wantB) {
+        g_memRunStartB[g_memRuns] = n;
+        g_memListB = n;
+    }
+    g_memBFrame = u9log_frame();
 }
 
 static void mem_render(void)
@@ -1231,6 +1432,579 @@ static void mem_render(void)
         if (g_memRunCut[r]) glBindTexture(GL_TEXTURE_2D, g_memRunTex[r]);
         glDrawArrays(GL_TRIANGLES, start[r] * 3, (start[r + 1] - start[r]) * 3);
     }
+}
+
+static uint32_t g_memTickFrame = 0xFFFFFFFFu;
+
+static void mem_tick(const U9FrameView *v)
+{
+    float cam[3], reach = g_sunRange < 500.0f ? 500.0f : g_sunRange;
+    float sunNear = g_sunNear < 250.0f ? 250.0f : g_sunNear;
+    int k, maps = g_sunCascades && sunNear < reach * 0.75f ? 2 : 1;
+    int want = g_sunMemory || g_shadowMem;
+    if (g_memTickFrame == u9log_frame()) return;
+    g_memTickFrame = u9log_frame();
+    cam[0] = v->m[3]; cam[1] = v->m[7]; cam[2] = v->m[11];
+    if (!want) { g_memListN = g_memRuns = 0; g_memListVer++; g_memContent++; }
+    g_memPassNow = 0;
+    if (want) {
+        if (!g_mem) {
+            g_mem = (SunTri *)malloc(SUN_MEM_MAX * sizeof *g_mem);
+            g_memHash = (int *)calloc(SUN_MEM_HASH, sizeof *g_memHash);
+            if (!g_mem || !g_memHash) {
+                free(g_mem); free(g_memHash); g_mem = NULL; g_memHash = NULL;
+                g_sunMemory = 0;
+                g_shadowMem = 0;
+                u9log_line("GLSHADOW memory: no room for it - sun and lamp memory off");
+            }
+        }
+        if (g_mem) {
+            MemCtx mc;
+            float dx = cam[0] - g_memCam[0], dy = cam[1] - g_memCam[1], dz = cam[2] - g_memCam[2];
+            float jump = maps == 2 ? sunNear * 2.0f : reach;
+            int fresh = 0;
+            if (g_memHaveCam && dx * dx + dy * dy + dz * dz > jump * jump) { mem_clear(); fresh = 1; }
+            for (k = 0; k < 3; k++) g_memCam[k] = cam[k];
+            g_memHaveCam = 1;
+            if (!fresh && g_memListN && (++g_memTick % SUN_MEM_EVERY) != 0) goto memory_done;
+            g_memFrame++;
+            g_memPassNow = 1;
+            mc.v = v;
+            mc.camX = cam[0];
+            mc.camY = cam[1];
+            mc.camZ = cam[2];
+            mc.reach2 = mem_reach(reach) * mem_reach(reach);
+            mc.now = u9time_now();
+            {
+                int ax, ay, az;
+                mc.haveAv = u9avatar_position(&ax, &ay, &az);
+                mc.av[0] = (float)ax; mc.av[1] = (float)ay; mc.av[2] = (float)az;
+            }
+            u9gl_casters(mem_collect, &mc);
+            mem_update(v, reach);
+            if (mc.now - g_memLogAt >= 2000u) {
+                float fz = v->m[9];
+                unsigned adNow, adLast;
+                u9gl_anim_draw_stats(&adNow, &adLast);
+                if (fz > 1.0f) fz = 1.0f;
+                if (fz < -1.0f) fz = -1.0f;
+                u9log_line("SUNMEM held %u, drawn %u this frame, %u new and %u forgotten in %u ms, %u slivers skipped;"
+                           " camera z %.0f, pitch %.0f deg%s; lamps: %u triangles from it last frame, %u left as fixtures,"
+                           " %u us choosing (peaks %u, %u us); choices redone %u - new %u, pass %u, moved %u, reach %u, setting %u;"
+                           " kept though not drawn this pass and filed within 80 of the Avatar: %u (oldest %u ms);"
+                           " from animated objects: %u (oldest %u ms); animated objects drawn last frame: %u%s",
+                           g_sunMemLive, g_sunMemDrawn, g_sunMemNew - g_memLogNew, g_sunMemDropped - g_memLogDropped,
+                           (unsigned)(mc.now - g_memLogAt), g_sunMemSkipped, (double)cam[2],
+                           (double)(asinf(fz) * 57.29578f), g_sunMemory == 2 ? ", memory only" : "",
+                           g_shadowMemPrevTris, g_shadowMemPrevFix, g_shadowMemPrevUs, g_shadowMemPeakTris, g_shadowMemPeakUs,
+                           g_shadowMemChosen, g_lsWhy[0], g_lsWhy[1], g_lsWhy[2], g_lsWhy[3], g_lsWhy[4],
+                           g_memDiagAvKept, g_memDiagAvOldest, g_memDiagAnimKept, g_memDiagAnimOldest, adLast,
+                           u9gl_anim_draw_installed() ? "" : " (marking not installed)");
+                if (g_memDiagAnimKept && g_memDiagAnimOldest > MEM_GHOST_MS)
+                    u9log_line("SHADOWGHOST %u remembered triangles from animated objects still cast though not drawn;"
+                               " the oldest was last drawn %u ms ago (camera %.0f,%.0f,%.0f)", g_memDiagAnimKept,
+                               g_memDiagAnimOldest, (double)cam[0], (double)cam[1], (double)cam[2]);
+                g_shadowMemChosen = 0;
+                memset(g_lsWhy, 0, sizeof g_lsWhy);
+                g_memLogAt = mc.now;
+                g_memLogNew = g_sunMemNew;
+                g_memLogDropped = g_sunMemDropped;
+                g_sunMemSkipped = 0;
+                g_shadowMemPeakTris = g_shadowMemPeakUs = 0;
+            }
+        }
+    }
+memory_done:
+    if (want) mem_between(v, g_memPassNow);
+}
+
+typedef struct {
+    int      valid, fixture;
+    float    L[3], reach;
+    unsigned pass, key, content;
+    int     *tri, *run, n, cap;
+    int      faceAt[7];
+} LampSel;
+static LampSel  g_lsel[U9SHADOW_MAX];
+static unsigned g_lselFrame[U9SHADOW_MAX];
+static GLuint  *g_lmIdx;
+static unsigned g_lmIdxCap;
+static int     *g_lmSegRun, *g_lmSegAt, g_lmSegs, g_lmSegCap;
+static int      g_lmFaceSeg[7];
+
+int             g_lmFaces = 1;
+#define FACE_MARGIN 8.0f
+static unsigned char g_lcMask[SUN_MEM_MAX];
+static int      g_lcTri[SUN_MEM_MAX], g_lcRun[SUN_MEM_MAX];
+
+static float min_abs(float a, float b)
+{
+    if (a <= 0.0f && b >= 0.0f) return 0.0f;
+    a = fabsf(a); b = fabsf(b);
+    return a < b ? a : b;
+}
+
+static unsigned face_mask(const float L[3], const float lo[3], const float hi[3])
+{
+    unsigned m = 0;
+    int ax;
+    if (!g_lmFaces) return 0x3Fu;
+    for (ax = 0; ax < 3; ax++) {
+        int o1 = (ax + 1) % 3, o2 = (ax + 2) % 3;
+        float a1 = min_abs(lo[o1] - L[o1], hi[o1] - L[o1]) - FACE_MARGIN;
+        float a2 = min_abs(lo[o2] - L[o2], hi[o2] - L[o2]) - FACE_MARGIN;
+        float pos = hi[ax] - L[ax], neg = L[ax] - lo[ax];
+        if (pos >= a1 && pos >= a2) m |= 1u << (ax * 2);
+        if (neg >= a1 && neg >= a2) m |= 1u << (ax * 2 + 1);
+    }
+    return m;
+}
+
+static unsigned sel_key(void)
+{
+    unsigned k = 2166136261u;
+    k = (k ^ (unsigned)(int)(g_shadowFixture * 16.0f)) * 16777619u;
+    k = (k ^ (unsigned)(int)(g_shadowColumn * 16.0f)) * 16777619u;
+    k = (k ^ (unsigned)(int)(g_shadowPart * 16.0f)) * 16777619u;
+    k = (k ^ (unsigned)(int)(g_shadowNear * 16.0f)) * 16777619u;
+    k = (k ^ (unsigned)g_shadowCutouts) * 16777619u;
+    k = (k ^ (unsigned)g_lmFaces) * 16777619u;
+    return k;
+}
+
+int             g_lmGrid = 0;
+#define GRID_N      64
+#define GRID_MIN    256.0f
+#define GRID_BIG    16
+static unsigned g_gridVer;
+static int      g_gridW, g_gridH, g_gridAlwaysN;
+static float    g_gridLo[2], g_gridCell;
+static int     *g_gridStart, *g_gridCur, g_gridStartCap, g_gridCurCap;
+static int     *g_gridTri, g_gridTriCap;
+static int     *g_gridAlways, g_gridAlwaysCap;
+static unsigned *g_gridStamp, g_gridStampNow;
+static int      g_gridStampCap;
+static float    g_gridHi[2];
+static int     *g_gridCand, g_gridCap;
+unsigned        g_gridChoices, g_gridTested, g_gridListed, g_gridChecks, g_gridMismatch;
+
+static int grow_int(int **p, int *cap, int need)
+{
+    int *q;
+    if (*cap >= need) return 1;
+    q = (int *)realloc(*p, (size_t)(need + 4096) * sizeof *q);
+    if (!q) return 0;
+    *p = q;
+    *cap = need + 4096;
+    return 1;
+}
+
+static void tri_xy(int i, float lo[2], float hi[2])
+{
+    const float *a = g_memVtx + i * 9, *b = a + 3, *d = a + 6;
+    int k;
+    for (k = 0; k < 2; k++) {
+        lo[k] = a[k] < b[k] ? a[k] : b[k]; if (d[k] < lo[k]) lo[k] = d[k];
+        hi[k] = a[k] > b[k] ? a[k] : b[k]; if (d[k] > hi[k]) hi[k] = d[k];
+    }
+}
+
+static int cell_of(float x, int axis)
+{
+    int c = (int)floorf((x - g_gridLo[axis]) / g_gridCell), n = axis ? g_gridH : g_gridW;
+    return c < 0 ? 0 : c >= n ? n - 1 : c;
+}
+
+static int grid_build(void)
+{
+    int i, c, x, y, n = g_memListN, cells, total = 0, x0, x1, y0, y1;
+    float mn[2], mx[2], lo[2], hi[2], ext;
+    if (g_gridVer == g_memListVer) return g_gridW > 0;
+    g_gridVer = g_memListVer;
+    g_gridW = g_gridH = 0;
+    g_gridAlwaysN = 0;
+    if (n <= 0 || !g_memVtx) return 0;
+    if (!grow_int(&g_gridCand, &g_gridCap, n)) return 0;
+    if (g_gridStampCap < g_gridCap) {
+        unsigned *st = (unsigned *)realloc(g_gridStamp, (size_t)g_gridCap * sizeof *st);
+        if (!st) return 0;
+        memset(st, 0, (size_t)g_gridCap * sizeof *st);
+        g_gridStamp = st;
+        g_gridStampCap = g_gridCap;
+        g_gridStampNow = 0;
+    }
+    mn[0] = mn[1] = 3.0e38f; mx[0] = mx[1] = -3.0e38f;
+    for (i = 0; i < n; i++) {
+        tri_xy(i, lo, hi);
+        for (c = 0; c < 2; c++) { if (lo[c] < mn[c]) mn[c] = lo[c]; if (hi[c] > mx[c]) mx[c] = hi[c]; }
+    }
+    ext = mx[0] - mn[0] > mx[1] - mn[1] ? mx[0] - mn[0] : mx[1] - mn[1];
+    g_gridCell = ext / (float)GRID_N;
+    if (g_gridCell < GRID_MIN) g_gridCell = GRID_MIN;
+    g_gridLo[0] = mn[0]; g_gridLo[1] = mn[1];
+    g_gridHi[0] = mx[0]; g_gridHi[1] = mx[1];
+    g_gridW = (int)((mx[0] - mn[0]) / g_gridCell) + 1; if (g_gridW > GRID_N) g_gridW = GRID_N;
+    g_gridH = (int)((mx[1] - mn[1]) / g_gridCell) + 1; if (g_gridH > GRID_N) g_gridH = GRID_N;
+    cells = g_gridW * g_gridH;
+    if (!grow_int(&g_gridStart, &g_gridStartCap, cells + 1) || !grow_int(&g_gridCur, &g_gridCurCap, cells + 1)) {
+        g_gridW = 0;
+        return 0;
+    }
+    memset(g_gridStart, 0, (size_t)(cells + 1) * sizeof *g_gridStart);
+    for (i = 0; i < n; i++) {
+        tri_xy(i, lo, hi);
+        x0 = cell_of(lo[0], 0); x1 = cell_of(hi[0], 0);
+        y0 = cell_of(lo[1], 1); y1 = cell_of(hi[1], 1);
+        if (x1 - x0 >= GRID_BIG || y1 - y0 >= GRID_BIG) { g_gridAlwaysN++; continue; }
+        for (y = y0; y <= y1; y++) for (x = x0; x <= x1; x++) { g_gridStart[y * g_gridW + x]++; total++; }
+    }
+    if (!grow_int(&g_gridTri, &g_gridTriCap, total) || !grow_int(&g_gridAlways, &g_gridAlwaysCap, g_gridAlwaysN)) {
+        g_gridW = 0;
+        return 0;
+    }
+    for (c = 0, x = 0; c < cells; c++) { int k = g_gridStart[c]; g_gridStart[c] = x; g_gridCur[c] = x; x += k; }
+    g_gridStart[cells] = x;
+    g_gridAlwaysN = 0;
+    for (i = 0; i < n; i++) {
+        tri_xy(i, lo, hi);
+        x0 = cell_of(lo[0], 0); x1 = cell_of(hi[0], 0);
+        y0 = cell_of(lo[1], 1); y1 = cell_of(hi[1], 1);
+        if (x1 - x0 >= GRID_BIG || y1 - y0 >= GRID_BIG) { g_gridAlways[g_gridAlwaysN++] = i; continue; }
+        for (y = y0; y <= y1; y++) for (x = x0; x <= x1; x++) g_gridTri[g_gridCur[y * g_gridW + x]++] = i;
+    }
+    return 1;
+}
+
+static int cmp_int(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b;
+    return x < y ? -1 : x > y;
+}
+
+static int grid_query(const float L[3], float R)
+{
+    int x, y, x0, x1, y0, y1, j, n = 0;
+    if (++g_gridStampNow == 0) {
+        memset(g_gridStamp, 0, (size_t)g_gridCap * sizeof *g_gridStamp);
+        g_gridStampNow = 1;
+    }
+    if (L[0] + R >= g_gridLo[0] && L[1] + R >= g_gridLo[1] && L[0] - R <= g_gridHi[0] && L[1] - R <= g_gridHi[1]) {
+        x0 = cell_of(L[0] - R, 0); x1 = cell_of(L[0] + R, 0);
+        y0 = cell_of(L[1] - R, 1); y1 = cell_of(L[1] + R, 1);
+        for (y = y0; y <= y1; y++)
+            for (x = x0; x <= x1; x++) {
+                int c = y * g_gridW + x;
+                for (j = g_gridStart[c]; j < g_gridStart[c + 1]; j++) {
+                    int i = g_gridTri[j];
+                    if (g_gridStamp[i] == g_gridStampNow) continue;
+                    g_gridStamp[i] = g_gridStampNow;
+                    g_gridCand[n++] = i;
+                }
+            }
+    }
+    for (j = 0; j < g_gridAlwaysN; j++) g_gridCand[n++] = g_gridAlways[j];
+    qsort(g_gridCand, (size_t)n, sizeof *g_gridCand, cmp_int);
+    return n;
+}
+
+static int choose_tri(const float L[3], float R, int fixture, int i, int r, int *nc, int cnt[6], unsigned *fix)
+{
+    const float *a = g_memVtx + i * 9, *b = a + 3, *d = a + 6;
+    float lo[3], hi[3], e, d2 = 0.0f;
+    unsigned mask;
+    int k, f;
+    for (k = 0; k < 3; k++) {
+        lo[k] = a[k] < b[k] ? a[k] : b[k]; if (d[k] < lo[k]) lo[k] = d[k];
+        hi[k] = a[k] > b[k] ? a[k] : b[k]; if (d[k] > hi[k]) hi[k] = d[k];
+        e = L[k] < lo[k] ? lo[k] - L[k] : L[k] > hi[k] ? L[k] - hi[k] : 0.0f;
+        d2 += e * e;
+    }
+    if (d2 > R * R) return 1;
+    if (fixture && mem_fixture_tri(L, a, b, d)) { (*fix)++; return 1; }
+    if (*nc >= SUN_MEM_MAX) return 0;
+    mask = face_mask(L, lo, hi);
+    g_lcTri[*nc] = i;
+    g_lcRun[*nc] = r;
+    g_lcMask[*nc] = (unsigned char)mask;
+    for (f = 0; f < 6; f++) if (mask & (1u << f)) cnt[f]++;
+    (*nc)++;
+    return 1;
+}
+
+static int choose_scan(const float L[3], float R, int fixture, int cnt[6], unsigned *fix)
+{
+    int r, i, nc = 0;
+    for (r = 0; r < g_memRuns; r++)
+        for (i = g_memRunStart[r]; i < g_memRunStart[r + 1]; i++)
+            if (!choose_tri(L, R, fixture, i, r, &nc, cnt, fix)) return nc;
+    return nc;
+}
+
+int             g_lmRunBox = 0;
+static float   *g_rbBox;
+static int      g_rbCap;
+static unsigned g_rbVer;
+
+static int runbox_build(void)
+{
+    int r, i, k;
+    if (g_rbVer == g_memListVer) return 1;
+    if (g_memRuns <= 0 || !g_memVtx) return 0;
+    if (g_rbCap < g_memRuns) {
+        float *b = (float *)realloc(g_rbBox, (size_t)(g_memRuns + 1024) * 6 * sizeof *b);
+        if (!b) return 0;
+        g_rbBox = b;
+        g_rbCap = g_memRuns + 1024;
+    }
+    for (r = 0; r < g_memRuns; r++) {
+        float *b = g_rbBox + r * 6;
+        b[0] = b[1] = b[2] = 3.0e38f;
+        b[3] = b[4] = b[5] = -3.0e38f;
+        for (i = g_memRunStart[r] * 9; i < g_memRunStart[r + 1] * 9; i += 3)
+            for (k = 0; k < 3; k++) {
+                float x = g_memVtx[i + k];
+                if (x < b[k]) b[k] = x;
+                if (x > b[3 + k]) b[3 + k] = x;
+            }
+    }
+    g_rbVer = g_memListVer;
+    return 1;
+}
+
+static int choose_runs(const float L[3], float R, int fixture, int cnt[6], unsigned *fix, unsigned *tested)
+{
+    int r, i, k, nc = 0;
+    for (r = 0; r < g_memRuns; r++) {
+        const float *b = g_rbBox + r * 6;
+        float e, d2 = 0.0f;
+        for (k = 0; k < 3; k++) {
+            e = L[k] < b[k] ? b[k] - L[k] : L[k] > b[3 + k] ? L[k] - b[3 + k] : 0.0f;
+            d2 += e * e;
+        }
+        if (d2 > R * R) continue;
+        *tested += (unsigned)(g_memRunStart[r + 1] - g_memRunStart[r]);
+        for (i = g_memRunStart[r]; i < g_memRunStart[r + 1]; i++)
+            if (!choose_tri(L, R, fixture, i, r, &nc, cnt, fix)) return nc;
+    }
+    return nc;
+}
+
+static int *g_gvTri, *g_gvRun, g_gvCap;
+static unsigned char *g_gvMask;
+static int grid_verify(const float L[3], float R, int fixture, int nc, int cnt[6], unsigned *fix)
+{
+    int n2, j, f, need = nc > 0 ? nc : 1;
+    if (g_gvCap < need) {
+        int cap = need + 4096;
+        int *t2 = (int *)realloc(g_gvTri, (size_t)cap * sizeof *t2), *r2;
+        unsigned char *m2;
+        if (!t2) return nc;
+        g_gvTri = t2;
+        r2 = (int *)realloc(g_gvRun, (size_t)cap * sizeof *r2);
+        if (!r2) return nc;
+        g_gvRun = r2;
+        m2 = (unsigned char *)realloc(g_gvMask, (size_t)cap);
+        if (!m2) return nc;
+        g_gvMask = m2;
+        g_gvCap = cap;
+    }
+    memcpy(g_gvTri, g_lcTri, (size_t)nc * sizeof *g_gvTri);
+    memcpy(g_gvRun, g_lcRun, (size_t)nc * sizeof *g_gvRun);
+    memcpy(g_gvMask, g_lcMask, (size_t)nc);
+    for (f = 0; f < 6; f++) cnt[f] = 0;
+    *fix = 0;
+    n2 = choose_scan(L, R, fixture, cnt, fix);
+    g_gridChecks++;
+    for (j = 0; j < nc && j < n2; j++)
+        if (g_gvTri[j] != g_lcTri[j] || g_gvRun[j] != g_lcRun[j] || g_gvMask[j] != g_lcMask[j]) break;
+    if (n2 != nc || j < nc) {
+        g_gridMismatch++;
+        if (g_gridMismatch <= 20)
+            u9log_line("SHADOWGRID mismatch %u (%s): light %.0f,%.0f,%.0f reach %.0f - chose %d, the scan %d, first"
+                       " difference at %d (grid %d cells %dx%d of %.0f, %d always)", g_gridMismatch,
+                       g_lmGrid ? "grid" : "by run",
+                       (double)L[0], (double)L[1], (double)L[2], (double)R, nc, n2, j, g_gridW * g_gridH,
+                       g_gridW, g_gridH, (double)g_gridCell, g_gridAlwaysN);
+    }
+    return n2;
+}
+
+static void lamp_choose(LampSel *s, const float L[3], float reach, int fixture)
+{
+    int r, i, f, nc = 0, total, cnt[6] = { 0, 0, 0, 0, 0, 0 }, at[6];
+    unsigned fix = 0;
+    float R = reach * 1.02f + 8.0f;
+    s->n = 0;
+    if (g_lmGrid && grid_build()) {
+        int nCand = grid_query(L, R), j;
+        r = 0;
+        for (j = 0; j < nCand; j++) {
+            i = g_gridCand[j];
+            while (r < g_memRuns && i >= g_memRunStart[r + 1]) r++;
+            if (!choose_tri(L, R, fixture, i, r, &nc, cnt, &fix)) break;
+        }
+        g_gridChoices++;
+        g_gridTested += (unsigned)nCand;
+        g_gridListed += (unsigned)g_memListN;
+        if (g_scostOn && (g_gridChoices & 63u) == 0) nc = grid_verify(L, R, fixture, nc, cnt, &fix);
+    } else if (g_lmRunBox && runbox_build()) {
+        unsigned tested = 0;
+        nc = choose_runs(L, R, fixture, cnt, &fix, &tested);
+        g_gridChoices++;
+        g_gridTested += tested;
+        g_gridListed += (unsigned)g_memListN;
+        if (g_scostOn && (g_gridChoices & 63u) == 0) nc = grid_verify(L, R, fixture, nc, cnt, &fix);
+    } else
+        nc = choose_scan(L, R, fixture, cnt, &fix);
+    total = cnt[0] + cnt[1] + cnt[2] + cnt[3] + cnt[4] + cnt[5];
+    if (s->cap < total) {
+        int cap = total + 4096;
+        int *t = (int *)realloc(s->tri, (size_t)cap * sizeof *t), *u;
+        if (!t) { s->valid = 0; return; }
+        s->tri = t;
+        u = (int *)realloc(s->run, (size_t)cap * sizeof *u);
+        if (!u) { s->valid = 0; return; }
+        s->run = u;
+        s->cap = cap;
+    }
+    s->faceAt[0] = 0;
+    for (f = 0; f < 6; f++) { s->faceAt[f + 1] = s->faceAt[f] + cnt[f]; at[f] = s->faceAt[f]; }
+    for (i = 0; i < nc; i++)
+        for (f = 0; f < 6; f++)
+            if (g_lcMask[i] & (1u << f)) { s->tri[at[f]] = g_lcTri[i]; s->run[at[f]] = g_lcRun[i]; at[f]++; }
+    s->n = total;
+    memcpy(s->L, L, sizeof s->L);
+    s->reach = reach;
+    s->fixture = fixture;
+    s->pass = g_memFrame;
+    s->content = g_memContent;
+    s->key = sel_key();
+    s->valid = 1;
+    g_shadowMemFix += fix;
+    g_shadowMemChosen++;
+}
+
+static int *g_kvTri, *g_kvRun, g_kvCap;
+static void keep_verify(LampSel *s)
+{
+    int n = s->n, at[7], j, same;
+    float L[3], reach = s->reach;
+    if (g_kvCap < n + 1) {
+        int cap = n + 4096;
+        int *t = (int *)realloc(g_kvTri, (size_t)cap * sizeof *t), *r;
+        if (!t) return;
+        g_kvTri = t;
+        r = (int *)realloc(g_kvRun, (size_t)cap * sizeof *r);
+        if (!r) return;
+        g_kvRun = r;
+        g_kvCap = cap;
+    }
+    memcpy(g_kvTri, s->tri, (size_t)n * sizeof *g_kvTri);
+    memcpy(g_kvRun, s->run, (size_t)n * sizeof *g_kvRun);
+    memcpy(at, s->faceAt, sizeof at);
+    memcpy(L, s->L, sizeof L);
+    lamp_choose(s, L, reach, s->fixture);
+    g_keepChecks++;
+    same = s->valid && s->n == n && !memcmp(s->faceAt, at, sizeof at);
+    for (j = 0; same && j < n; j++) if (s->tri[j] != g_kvTri[j] || s->run[j] != g_kvRun[j]) same = 0;
+    if (!same) {
+        g_keepMismatch++;
+        if (g_keepMismatch <= 20)
+            u9log_line("SHADOWKEEP mismatch %u: light %.0f,%.0f,%.0f reach %.0f - kept %d entries, made again %d",
+                       g_keepMismatch, (double)L[0], (double)L[1], (double)L[2], (double)reach, n, s->n);
+    }
+}
+
+static unsigned lamp_select(const float L[3], float reach, int fixture, int slot)
+{
+    LARGE_INTEGER t0, t1, fq;
+    LampSel *s;
+    int j, cur = -1;
+    unsigned cnt = 0;
+    if (slot < 0 || slot >= U9SHADOW_MAX || !g_mem || g_memListN <= 0 || g_memRuns <= 0 || !g_memVtx) return 0;
+    if (g_memBFrame != u9log_frame() || !g_memSkip) return 0;
+    QueryPerformanceCounter(&t0);
+    s = &g_lsel[slot];
+    g_lselFrame[slot] = u9log_frame();
+    {
+        int why = !s->valid ? 0 : (g_lmKeep ? s->content != g_memContent : s->pass != g_memFrame) ? 1 :
+                  (fabsf(s->L[0] - L[0]) > 4.0f || fabsf(s->L[1] - L[1]) > 4.0f || fabsf(s->L[2] - L[2]) > 4.0f) ? 2 :
+                  (fabsf(s->reach - reach) > reach * 0.02f || s->fixture != fixture) ? 3 :
+                  s->key != sel_key() ? 4 : -1;
+        if (why >= 0) {
+            g_lsWhy[why]++;
+            lamp_choose(s, L, reach, fixture);
+            g_keepMade++;
+        } else if (s->pass != g_memFrame) {
+            g_keepKept++;
+            if (g_scostOn && (g_keepKept & 63u) == 0) keep_verify(s);
+            s->pass = g_memFrame;
+        }
+    }
+    if (!s->valid) return 0;
+    if (g_lmIdxCap < (unsigned)s->n * 3u) {
+        unsigned cap = (unsigned)s->n * 3u + 12288u;
+        GLuint *p = (GLuint *)realloc(g_lmIdx, cap * sizeof *p);
+        if (!p) return 0;
+        g_lmIdx = p;
+        g_lmIdxCap = cap;
+    }
+    if (g_lmSegCap < s->n + 8) {
+        int cap = s->n + 4096;
+        int *sa = (int *)realloc(g_lmSegRun, (size_t)cap * sizeof *sa), *sb;
+        if (!sa) return 0;
+        g_lmSegRun = sa;
+        sb = (int *)realloc(g_lmSegAt, (size_t)(cap + 1) * sizeof *sb);
+        if (!sb) return 0;
+        g_lmSegAt = sb;
+        g_lmSegCap = cap;
+    }
+    g_lmSegs = 0;
+    {
+        int f;
+        for (f = 0; f < 6; f++) {
+            g_lmFaceSeg[f] = g_lmSegs;
+            cur = -1;
+            for (j = s->faceAt[f]; j < s->faceAt[f + 1]; j++) {
+                int i = s->tri[j];
+                if (g_memSkip[i]) continue;
+                if (s->run[j] != cur) {
+                    cur = s->run[j];
+                    g_lmSegRun[g_lmSegs] = cur;
+                    g_lmSegAt[g_lmSegs] = (int)cnt;
+                    g_lmSegs++;
+                }
+                g_lmIdx[cnt++] = (GLuint)(i * 3);
+                g_lmIdx[cnt++] = (GLuint)(i * 3 + 1);
+                g_lmIdx[cnt++] = (GLuint)(i * 3 + 2);
+            }
+        }
+        g_lmFaceSeg[6] = g_lmSegs;
+    }
+    g_lmSegAt[g_lmSegs] = (int)cnt;
+    QueryPerformanceCounter(&t1);
+    QueryPerformanceFrequency(&fq);
+    if (fq.QuadPart > 0) g_shadowMemUs += (unsigned)((t1.QuadPart - t0.QuadPart) * 1000000 / fq.QuadPart);
+    g_shadowMemTris += cnt / 3u;
+    return cnt / 3u;
+}
+
+static void lamp_mem_draw(int face)
+{
+    int g;
+    fUniform1i(uMode, 4);
+    glVertexPointer(3, GL_FLOAT, 0, g_memVtx);
+    glTexCoordPointer(2, GL_FLOAT, 0, g_memTc);
+    if (face < 0 || face > 5) return;
+    for (g = g_lmFaceSeg[face]; g < g_lmFaceSeg[face + 1]; g++) {
+        int n = g_lmSegAt[g + 1] - g_lmSegAt[g], r = g_lmSegRun[g];
+        if (n <= 0) continue;
+        fUniform1i(uCutout, g_memRunCut[r]);
+        if (g_memRunCut[r]) glBindTexture(GL_TEXTURE_2D, g_memRunTex[r]);
+        glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, g_lmIdx + g_lmSegAt[g]);
+    }
+    fUniform1i(uMode, 0);
+    frame_pointers();
 }
 
 unsigned u9shadow_sun_rebases(void)
@@ -1428,51 +2202,8 @@ int u9shadow_build_sun(const U9FrameView *v, const float dir[3], U9SunMap *nearM
     sun_axes(l0, l, r, u, pr, pu, pl);
     cam[0] = v->m[3]; cam[1] = v->m[7]; cam[2] = v->m[11];
 
-    if (!g_sunMemory) g_memListN = g_memRuns = 0;
-    g_memPassNow = 0;
-    if (g_sunMemory) {
-        if (!g_mem) {
-            g_mem = (SunTri *)malloc(SUN_MEM_MAX * sizeof *g_mem);
-            g_memHash = (int *)calloc(SUN_MEM_HASH, sizeof *g_memHash);
-            if (!g_mem || !g_memHash) { free(g_mem); free(g_memHash); g_mem = NULL; g_memHash = NULL; g_sunMemory = 0; }
-        }
-        if (g_mem) {
-            MemCtx mc;
-            float dx = cam[0] - g_memCam[0], dy = cam[1] - g_memCam[1], dz = cam[2] - g_memCam[2];
-            float jump = maps == 2 ? g_sunNear * 2.0f : reach;
-            int fresh = 0;
-            if (g_memHaveCam && dx * dx + dy * dy + dz * dz > jump * jump) { mem_clear(); fresh = 1; }
-            for (k = 0; k < 3; k++) g_memCam[k] = cam[k];
-            g_memHaveCam = 1;
-            if (!fresh && g_memListN && (++g_memTick % SUN_MEM_EVERY) != 0) goto memory_done;
-            g_memFrame++;
-            g_memPassNow = 1;
-            mc.v = v;
-            mc.camX = cam[0];
-            mc.camY = cam[1];
-            mc.camZ = cam[2];
-            mc.reach2 = mem_reach(reach) * mem_reach(reach);
-            mc.now = u9time_now();
-            u9gl_casters(mem_collect, &mc);
-            mem_update(v, reach);
-            if (mc.now - g_memLogAt >= 2000u) {
-                float fz = v->m[9];
-                if (fz > 1.0f) fz = 1.0f;
-                if (fz < -1.0f) fz = -1.0f;
-                u9log_line("SUNMEM held %u, drawn %u this frame, %u new and %u forgotten in %u ms, %u slivers skipped;"
-                           " camera z %.0f, pitch %.0f deg%s",
-                           g_sunMemLive, g_sunMemDrawn, g_sunMemNew - g_memLogNew, g_sunMemDropped - g_memLogDropped,
-                           (unsigned)(mc.now - g_memLogAt), g_sunMemSkipped, (double)cam[2],
-                           (double)(asinf(fz) * 57.29578f), g_sunMemory == 2 ? ", memory only" : "");
-                g_memLogAt = mc.now;
-                g_memLogNew = g_sunMemNew;
-                g_memLogDropped = g_sunMemDropped;
-                g_sunMemSkipped = 0;
-            }
-        }
-    }
-memory_done:
-    if (g_sunMemory) mem_between(v, g_memPassNow);
+    mem_tick(v);
+    g_sunBuiltFrame = u9log_frame();
 
     glPushAttrib(GL_ALL_ATTRIB_BITS);
     if (!draw_sun_map(v, 0, r, u, l, pr, pu, pl, o, maps == 2 ? g_sunNear : reach, nearMap)) { glPopAttrib(); return 0; }
@@ -1571,6 +2302,14 @@ void u9shadow_init(void)
     g_shadowCount   = u9cfg_int("gl_light_shadow_count", 8);
     if (g_shadowCount < 1) g_shadowCount = 1;
     if (g_shadowCount > U9SHADOW_MAX) g_shadowCount = U9SHADOW_MAX;
+    g_shadowMem        = u9cfg_int("gl_light_shadow_memory", 1);
+    g_shadowFire       = u9cfg_int("gl_light_shadow_fire", 1);
+    g_shadowMem = g_shadowMem != 0;
+    g_shadowMemAnimated = u9cfg_int("gl_shadow_memory_skip_moving", 1) == 0;
+    g_lmFaces = u9cfg_int("gl_light_shadow_memory_faces", 1) != 0;
+    g_lmGrid = u9cfg_int("gl_light_shadow_memory_grid", 0) != 0;
+    g_lmRunBox = u9cfg_int("gl_light_shadow_memory_runbox", 0) != 0;
+    g_lmKeep = u9cfg_int("gl_light_shadow_memory_keep", 1) != 0;
     g_sunOn           = u9cfg_int("gl_sun_shadows", 1);
     g_sunStrength     = (float)u9cfg_int("gl_sun_shadow_strength", 60) / 100.0f;
     g_sunRange        = (float)u9cfg_int("gl_sun_shadow_range", 10000);
@@ -1589,6 +2328,9 @@ void u9shadow_init(void)
     if (g_sunXfadeMs < 0) g_sunXfadeMs = 0;
     g_waterDepth      = u9cfg_int("gl_water_depth", 1);
     g_sunAbove        = (float)u9cfg_int("gl_sun_shadow_above", -5000);
+    g_sunMemMargin    = (float)u9cfg_int("gl_sun_shadow_memory_margin", 2000);
+    g_sunEvict        = u9cfg_int("gl_sun_shadow_memory_evict", 1) != 0;
+    if (g_sunMemMargin < 0.0f) g_sunMemMargin = 0.0f;
     if (g_sunBias < 0.0f) g_sunBias = 0.0f;
     g_sunMemory       = u9cfg_int("gl_sun_shadow_memory", 1);
     g_sunKeepS        = u9cfg_int("gl_sun_shadow_keep", 120);
@@ -1598,3 +2340,399 @@ int u9shadow_hide_blob(void)
 {
     return g_shadowOn && g_shadowHideBlob && !g_failed;
 }
+
+static int ray_tri(const float o[3], const float dv[3], const float *a, const float *b, const float *c, float *t)
+{
+    float e1[3], e2[3], s[3], p[3], q[3], det, inv, u, w;
+    int k;
+    for (k = 0; k < 3; k++) { e1[k] = b[k] - a[k]; e2[k] = c[k] - a[k]; s[k] = o[k] - a[k]; }
+    cross3(dv, e2, p);
+    det = e1[0] * p[0] + e1[1] * p[1] + e1[2] * p[2];
+    if (det > -1e-9f && det < 1e-9f) return 0;
+    inv = 1.0f / det;
+    u = (s[0] * p[0] + s[1] * p[1] + s[2] * p[2]) * inv;
+    if (u < 0.0f || u > 1.0f) return 0;
+    cross3(s, e1, q);
+    w = (dv[0] * q[0] + dv[1] * q[1] + dv[2] * q[2]) * inv;
+    if (w < 0.0f || u + w > 1.0f) return 0;
+    *t = (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]) * inv;
+    return 1;
+}
+
+typedef struct {
+    const U9FrameView *v;
+    float L[3], dv[3], tMin, tMax, reach;
+    int fixture;
+    unsigned idx, hits;
+    float best;
+    unsigned run, tex, tris;
+    int cut, fix, culled;
+} RayCtx;
+
+static void ray_run(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
+{
+    RayCtx *c = (RayCtx *)ctx;
+    int stride, k, inRun = 0, column = 0, culled = 0;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    unsigned at = c->idx++, t;
+    const float *lo = NULL, *hi = NULL;
+    if (at < g_nBox) {
+        float d2 = 0.0f, e;
+        lo = g_box[at]; hi = g_box[at] + 3;
+        if (c->fixture) {
+            inRun = 1;
+            for (k = 0; k < 3; k++)
+                if (c->L[k] < lo[k] - g_shadowNear || c->L[k] > hi[k] + g_shadowNear) inRun = 0;
+            column = g_shadowColumn > 0.0f;
+            for (k = 0; k < 2; k++)
+                if (c->L[k] < lo[k] - g_shadowColumn || c->L[k] > hi[k] + g_shadowColumn) column = 0;
+        }
+        for (k = 0; k < 3; k++) {
+            e = lo[k] > c->L[k] ? lo[k] - c->L[k] : c->L[k] > hi[k] ? c->L[k] - hi[k] : 0.0f;
+            d2 += e * e;
+        }
+        if (d2 > c->reach * c->reach) culled = 1;
+    }
+    for (t = first; t + 2 < first + count; t += 3) {
+        float a[3], b[3], d[3], tt;
+        if (!world_of(c->v, (const float *)(base + (size_t)t * (size_t)stride), a) ||
+            !world_of(c->v, (const float *)(base + (size_t)(t + 1) * (size_t)stride), b) ||
+            !world_of(c->v, (const float *)(base + (size_t)(t + 2) * (size_t)stride), d)) continue;
+        if (!ray_tri(c->L, c->dv, a, b, d, &tt) || tt <= c->tMin || tt >= c->tMax) continue;
+        c->hits++;
+        if (tt >= c->best) continue;
+        c->best = tt;
+        c->run = at;
+        c->tex = glTex;
+        c->tris = count / 3;
+        c->cut = cutout;
+        c->fix = (inRun || column) && fixture_tri(c->L, inRun, column, a, b, d);
+        c->culled = culled;
+        if (!culled && lo) {
+            float h[3], m = 0.0f;
+            int ax = 0;
+            for (k = 0; k < 3; k++) {
+                h[k] = c->dv[k] * tt;
+                if (fabsf(h[k]) > m) { m = fabsf(h[k]); ax = k; }
+            }
+            if ((h[ax] < 0.0f ? c->L[ax] - lo[ax] : hi[ax] - c->L[ax]) < 4.0f) c->culled = 2;
+        }
+    }
+}
+
+void u9gl_all_runs(void (*fn)(void *ctx, unsigned first, unsigned count, int texId, int back, const char *why),
+                   void *ctx);
+typedef struct { float d, t; int tex, back; } NearMiss;
+#define NEAR_KEEP 3
+
+static float seg_dist(const float p[3], const float L[3], const float dv[3], float len2, float *tOut)
+{
+    float w[3], t, q[3];
+    int k;
+    for (k = 0; k < 3; k++) w[k] = p[k] - L[k];
+    t = (w[0] * dv[0] + w[1] * dv[1] + w[2] * dv[2]) / len2;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    for (k = 0; k < 3; k++) q[k] = w[k] - dv[k] * t;
+    *tOut = t;
+    return sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]);
+}
+
+static void near_note(NearMiss *nm, const float *a, const float *b, const float *c, const float L[3], const float dv[3],
+                      float len2, float tMin, float tMax, int tex, int back)
+{
+    float pts[7][3], best = 1e30f, bt = 0.0f, t, d;
+    int k, j;
+    for (k = 0; k < 3; k++) {
+        pts[0][k] = a[k]; pts[1][k] = b[k]; pts[2][k] = c[k];
+        pts[3][k] = 0.5f * (a[k] + b[k]); pts[4][k] = 0.5f * (b[k] + c[k]); pts[5][k] = 0.5f * (c[k] + a[k]);
+        pts[6][k] = (a[k] + b[k] + c[k]) / 3.0f;
+    }
+    for (j = 0; j < 7; j++) {
+        d = seg_dist(pts[j], L, dv, len2, &t);
+        if (d < best) { best = d; bt = t; }
+    }
+    if (bt <= tMin || bt >= tMax || best > 96.0f) return;
+    for (j = NEAR_KEEP - 1; j >= 0 && (nm[j].d < 0.0f || best < nm[j].d); j--) {
+        if (j + 1 < NEAR_KEEP) nm[j + 1] = nm[j];
+        nm[j].d = best; nm[j].t = bt; nm[j].tex = tex; nm[j].back = back;
+    }
+}
+
+static void near_line(const char *what, const NearMiss *nm, float len, void (*line)(const char *fmt, ...))
+{
+    int j;
+    char buf[256];
+    int n = 0;
+    if (nm[0].d < 0.0f) { line("GLSHADOW ray: %s - nothing passes within 96 of the line", what); return; }
+    for (j = 0; j < NEAR_KEEP && nm[j].d >= 0.0f; j++)
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "%s%.0f off the line %.0f from the light (texture %d%s)",
+                      j ? "; " : "", (double)nm[j].d, (double)(nm[j].t * len), nm[j].tex, nm[j].back ? ", back face" : "");
+    line("GLSHADOW ray: %s - closest: %s", what, buf);
+}
+
+typedef struct {
+    const U9FrameView *v;
+    float L[3], dv[3], tMin, tMax, best, len2;
+    int tex, back, hits, excludedHits;
+    const char *why;
+    NearMiss nm[NEAR_KEEP];
+} AnyCtx;
+
+static void any_run(void *ctx, unsigned first, unsigned count, int texId, int back, const char *why)
+{
+    AnyCtx *c = (AnyCtx *)ctx;
+    int stride;
+    const char *base = (const char *)u9gl_caster_vertices(&stride);
+    unsigned t;
+    for (t = first; t + 2 < first + count; t += 3) {
+        float a[3], b[3], d[3], tt;
+        if (!world_of(c->v, (const float *)(base + (size_t)t * (size_t)stride), a) ||
+            !world_of(c->v, (const float *)(base + (size_t)(t + 1) * (size_t)stride), b) ||
+            !world_of(c->v, (const float *)(base + (size_t)(t + 2) * (size_t)stride), d)) continue;
+        near_note(c->nm, a, b, d, c->L, c->dv, c->len2, c->tMin, c->tMax, texId, back);
+        if (!ray_tri(c->L, c->dv, a, b, d, &tt) || tt <= c->tMin || tt >= c->tMax) continue;
+        c->hits++;
+        if (why) c->excludedHits++;
+        if (tt >= c->best) continue;
+        c->best = tt;
+        c->tex = texId;
+        c->back = back;
+        c->why = why;
+    }
+}
+
+void u9shadow_sun_probe_ray(const U9FrameView *v, const float P[3], const float N[3], const float l[3],
+                            void (*out)(const char *fmt, ...))
+{
+    AnyCtx ac;
+    float S[3], dv[3], best = 2.0f, reach = 6000.0f, cam[3];
+    int k, i, bestI = -1, hits = 0;
+    DWORD now = u9time_now();
+    for (k = 0; k < 3; k++) { S[k] = P[k] + N[k] * 4.0f; dv[k] = l[k] * reach; }
+    memset(&ac, 0, sizeof ac);
+    ac.v = v;
+    memcpy(ac.L, S, sizeof ac.L);
+    memcpy(ac.dv, dv, sizeof ac.dv);
+    ac.tMin = 0.0f;
+    ac.tMax = 1.0f;
+    ac.best = 2.0f;
+    ac.len2 = reach * reach;
+    for (k = 0; k < NEAR_KEEP; k++) ac.nm[k].d = -1.0f;
+    u9gl_all_runs(any_run, &ac);
+    if (ac.best < 2.0f) {
+        u9log_line("GLSUN ray: frame - the nearest toward the light %.0f off, texture %d%s: %s", (double)(ac.best * reach),
+                   ac.tex, ac.back ? ", a back face or the guard band" : "", ac.why ? ac.why : "a caster");
+        if (out) out("toward the light, the frame: %.0f off, texture %d%s (%s)", (double)(ac.best * reach), ac.tex,
+                     ac.back ? ", back face or guard" : "", ac.why ? ac.why : "a caster");
+    } else {
+        u9log_line("GLSUN ray: frame - nothing drawn toward the light within %.0f", (double)reach);
+        if (out) out("toward the light, the frame: nothing drawn within %.0f", (double)reach);
+    }
+    for (i = 0; i < g_memN && g_mem; i++) {
+        const SunTri *e = &g_mem[i];
+        float t;
+        if (!e->live || !ray_tri(S, dv, e->p[0], e->p[1], e->p[2], &t) || t <= 0.0f || t >= 1.0f) continue;
+        hits++;
+        if (t < best) { best = t; bestI = i; }
+    }
+    if (bestI < 0) {
+        u9log_line("GLSUN ray: memory - nothing remembered toward the light within %.0f", (double)reach);
+        if (out) out("toward the light, the memory: nothing within %.0f", (double)reach);
+        return;
+    }
+    {
+        const SunTri *e = &g_mem[bestI];
+        float mid[3], dx, dy, mr = mem_reach(g_sunRange < 500.0f ? 500.0f : g_sunRange);
+        int onS, inRoom;
+        const char *why;
+        for (k = 0; k < 3; k++) mid[k] = (e->p[0][k] + e->p[1][k] + e->p[2][k]) / 3.0f;
+        cam[0] = v->m[3]; cam[1] = v->m[7]; cam[2] = v->m[11];
+        onS = on_screen(v, mid);
+        inRoom = u9spaces_at(cam, NULL, 0, NULL) >= 0;
+        dx = mid[0] - cam[0]; dy = mid[1] - cam[1];
+        why = e->frame == g_memFrame ? "drawn on the last pass - it is (or was just) there" :
+              dx * dx + dy * dy > mr * mr ? "out of the memory's reach - forgotten next pass" :
+              !onS ? "its spot is off screen (or behind, or past the far plane) - nothing can show it gone" :
+              inRoom ? "on screen, but the camera is in a room - undrawn proves nothing there" :
+              e->partial == g_memFrame ? "a smaller cut of it was drawn on the last pass" :
+              "on screen and not drawn - forgotten on the next pass";
+        u9log_line("GLSUN ray: memory - %d remembered on the line; the nearest %.0f off at %.0f,%.0f,%.0f, gl texture %u%s,"
+                   " area %.0f, last drawn %u passes and %u ms ago, when the Avatar was %.0f off and the camera %.0f;"
+                   " kept: %s", hits, (double)(best * reach), (double)mid[0], (double)mid[1], (double)mid[2], e->tex,
+                   e->cutout ? " (cutout)" : "", (double)e->area, g_memFrame - e->frame, (unsigned)(now - e->seen),
+                   (double)e->avD, (double)e->camD, why);
+        if (out) {
+            out("toward the light, the memory: %d on the line; nearest %.0f off at %.0f,%.0f,%.0f, gl tex %u, area %.0f,"
+                " last drawn %u ms ago", hits, (double)(best * reach), (double)mid[0], (double)mid[1], (double)mid[2],
+                e->tex, (double)e->area, (unsigned)(now - e->seen));
+            out("  then the Avatar was %.0f off and the camera %.0f; still kept because %s", (double)e->avD,
+                (double)e->camD, why);
+        }
+    }
+}
+
+void u9shadow_probe_ray(const U9FrameView *v, const float L[3], const float P[3], float range, int slot,
+                        float weight, int fixture, float bias, float slope, void (*line)(const char *fmt, ...))
+{
+    RayCtx rc;
+    float dv[3], len, reach = range * 1.0f, cubeD = -1.0f;
+    int k;
+    const char *what;
+    if (!line || !v || !v->valid) return;
+    for (k = 0; k < 3; k++) dv[k] = P[k] - L[k];
+    len = sqrtf(dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2]);
+    if (len < 1.0f) return;
+    if (slot >= 0 && slot < U9SHADOW_MAX && g_cube[slot] && g_cubeSize > 0) reach = g_cubeReach[slot];
+    memset(&rc, 0, sizeof rc);
+    rc.v = v;
+    memcpy(rc.L, L, sizeof rc.L);
+    memcpy(rc.dv, dv, sizeof rc.dv);
+    rc.tMin = 4.0f / len;
+    rc.tMax = (len - 8.0f) / len;
+    rc.reach = reach;
+    rc.fixture = fixture;
+    rc.best = 2.0f;
+    u9gl_casters(ray_run, &rc);
+    if (rc.best < 2.0f) {
+        what = rc.fix ? "LEFT OUT as the light's fixture" : rc.culled == 1 ? "LEFT OUT: its run's box is beyond the reach" :
+               rc.culled == 2 ? "LEFT OUT: its run's box is wholly behind the cube face" : "drawn";
+        line("GLSHADOW ray: frame - %u caster triangles on the line; the nearest %.0f from the light (the point %.0f), run %u"
+             " (%u triangles, texture %u%s): %s", rc.hits, (double)(rc.best * len), (double)len, rc.run, rc.tris, rc.tex,
+             rc.cut ? ", cutout - its holes let light through" : "", what);
+    } else {
+        line("GLSHADOW ray: frame - nothing on the line from the light to the point (%.0f) among this frame's casters",
+             (double)len);
+    }
+    {
+        AnyCtx ac;
+        memset(&ac, 0, sizeof ac);
+        ac.v = v;
+        memcpy(ac.L, L, sizeof ac.L);
+        memcpy(ac.dv, dv, sizeof ac.dv);
+        ac.tMin = rc.tMin;
+        ac.tMax = rc.tMax;
+        ac.best = 2.0f;
+        ac.len2 = len * len;
+        for (k = 0; k < NEAR_KEEP; k++) ac.nm[k].d = -1.0f;
+        u9gl_all_runs(any_run, &ac);
+        near_line("frame, all runs", ac.nm, len, line);
+        if (ac.best < 2.0f)
+            line("GLSHADOW ray: all runs - %d triangles on the line (%d of them not casters); the nearest %.0f from the light,"
+                 " texture %d%s: %s", ac.hits, ac.excludedHits, (double)(ac.best * len), ac.tex, ac.back ? ", a back face" : "",
+                 ac.why ? ac.why : "a caster");
+        else
+            line("GLSHADOW ray: all runs - nothing the frame drew lies on the line, caster or not%s",
+                 g_bfOn ? "" : " (back faces off: walls turned away are not drawn)");
+    }
+    {
+        const float *vtx = NULL;
+        const int *start = NULL;
+        int n = 0, i, r, bestI = -1, hits = 0, inB = 0;
+        float best = 2.0f;
+        if (g_mem && g_memListN) { vtx = g_memVtx; start = g_memRunStart; n = g_memListN; }
+        inB = g_memSkip && g_memBFrame == u9log_frame();
+        NearMiss mnm[NEAR_KEEP];
+        for (r = 0; r < NEAR_KEEP; r++) mnm[r].d = -1.0f;
+        for (i = 0, r = 0; i < n && vtx; i++) {
+            float tt;
+            const float *a = vtx + i * 9;
+            if (inB && g_memSkip[i]) continue;
+            while (r < g_memRuns && g_memRunStart[r + 1] <= i) r++;
+            near_note(mnm, a, a + 3, a + 6, L, dv, len * len, rc.tMin, rc.tMax, r < g_memRuns ? (int)g_memRunTex[r] : 0, 0);
+            if (!ray_tri(L, dv, a, a + 3, a + 6, &tt) || tt <= rc.tMin || tt >= rc.tMax) continue;
+            hits++;
+            if (tt < best) { best = tt; bestI = i; }
+        }
+        if (vtx) near_line("memory", mnm, len, line);
+        if (bestI >= 0) {
+            const float *a = vtx + bestI * 9;
+            int fix = fixture && mem_fixture_tri(L, a, a + 3, a + 6);
+            for (r = 0; r < g_memRuns && start[r + 1] <= bestI; r++) {}
+            line("GLSHADOW ray: memory (%s, %d triangles) - %d on the line; the nearest %.0f from the light, texture %u%s: %s",
+                 inB ? "less what the frame has on screen" : "the whole list", n, hits, (double)(best * len),
+                 r < g_memRuns ? g_memRunTex[r] : 0u, r < g_memRuns && g_memRunCut[r] ? ", cutout" : "",
+                 !g_shadowMem ? "not used (pool shadow memory off)" : fix ? "LEFT OUT as the light's fixture" : "drawn");
+        } else {
+            line("GLSHADOW ray: memory (%d triangles%s) - nothing on the line", n,
+                 vtx ? (inB ? ", less what the frame has on screen" : ", the whole list") : ", none this frame");
+        }
+    }
+    if (slot < 0 || slot >= U9SHADOW_MAX || !g_cube[slot] || g_cubeSize <= 0) {
+        line("GLSHADOW ray: this light has no shadow cube this frame - it lights the point through anything");
+        return;
+    }
+    {
+        float ax = fabsf(dv[0]), ay = fabsf(dv[1]), az = fabsf(dv[2]), sc, tc, ma, s, t, val = 0.0f;
+        int face, ix, iy;
+        GLint prev = 0;
+        if (ax >= ay && ax >= az) { face = dv[0] > 0 ? 0 : 1; ma = ax; sc = dv[0] > 0 ? -dv[2] : dv[2]; tc = -dv[1]; }
+        else if (ay >= az)        { face = dv[1] > 0 ? 2 : 3; ma = ay; sc = dv[0]; tc = dv[1] > 0 ? dv[2] : -dv[2]; }
+        else                      { face = dv[2] > 0 ? 4 : 5; ma = az; sc = dv[2] > 0 ? dv[0] : -dv[0]; tc = -dv[1]; }
+        s = 0.5f * (sc / ma + 1.0f);
+        t = 0.5f * (tc / ma + 1.0f);
+        ix = (int)(s * (float)g_cubeSize);
+        iy = (int)(t * (float)g_cubeSize);
+        if (ix < 0) ix = 0;
+        if (iy < 0) iy = 0;
+        if (ix >= g_cubeSize) ix = g_cubeSize - 1;
+        if (iy >= g_cubeSize) iy = g_cubeSize - 1;
+        glGetIntegerv(0x8CA6, &prev);
+        fBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+        fFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, g_cube[slot], 0);
+        glReadPixels(ix, iy, 1, 1, GL_RED_, GL_FLOAT, &val);
+        fBindFramebuffer(GL_FRAMEBUFFER, (GLuint)prev);
+        cubeD = val * reach;
+        line("GLSHADOW ray: cube %d (weight %.2f, reach %.0f) holds %.0f in that direction (face %d, texel %d,%d); the point is"
+             " %.0f away - %s", slot, (double)weight, (double)reach, (double)cubeD, face, ix, iy, (double)len,
+             cubeD < len - (bias + len * slope) ? "IN SHADOW by the cube" : "LIT by the cube");
+    }
+}
+
+#define CEN_D 7
+#define CEN_H 5
+static unsigned char g_cenUsed[SUN_MEM_MAX];
+void u9shadow_mem_census(void (*out)(const char *fmt, ...), const char *tag, unsigned refused, unsigned sunMaps)
+{
+    static const float dB[CEN_D - 1] = { 500.0f, 1000.0f, 2000.0f, 3000.0f, 4000.0f, 6000.0f };
+    unsigned all[CEN_D] = { 0 }, used[CEN_D] = { 0 }, hAll[CEN_H] = { 0 }, hUsed[CEN_H] = { 0 }, nUsed = 0, fresh = 0;
+    int i, k, ax, ay, az, avOk, n = g_memListN, sl;
+    float av[3];
+    unsigned frame = u9log_frame();
+    if (!g_memVtx || n <= 0) {
+        out("%s memory: empty | refused %u, sun maps built %u this second", tag, refused, sunMaps);
+        return;
+    }
+    avOk = u9avatar_position(&ax, &ay, &az);
+    av[0] = (float)ax; av[1] = (float)ay; av[2] = (float)az;
+    memset(g_cenUsed, 0, (size_t)n);
+    for (sl = 0; sl < U9SHADOW_MAX; sl++) {
+        const LampSel *s = &g_lsel[sl];
+        int j;
+        if (!s->valid || s->content != g_memContent || g_lselFrame[sl] != frame) continue;
+        for (j = 0; j < s->n; j++) if (s->tri[j] >= 0 && s->tri[j] < n) g_cenUsed[s->tri[j]] = 1;
+    }
+    for (i = 0; i < n; i++) {
+        const float *p = g_memVtx + i * 9;
+        float c[3], d2, dz;
+        int b, h;
+        for (k = 0; k < 3; k++) c[k] = (p[k] + p[3 + k] + p[6 + k]) / 3.0f;
+        d2 = (c[0] - av[0]) * (c[0] - av[0]) + (c[1] - av[1]) * (c[1] - av[1]);
+        for (b = 0; b < CEN_D - 1 && d2 > dB[b] * dB[b]; b++) {}
+        if (!avOk) b = CEN_D - 1;
+        dz = c[2] - av[2];
+        h = dz < -1000.0f ? 0 : dz < -300.0f ? 1 : dz <= 300.0f ? 2 : dz <= 1000.0f ? 3 : 4;
+        all[b]++; hAll[h]++;
+        if (g_cenUsed[i]) { used[b]++; hUsed[h]++; nUsed++; }
+        if (g_memFresh && g_memFresh[i]) fresh++;
+    }
+    out("%s memory round the Avatar%s, under 500/1000/2000/3000/4000/6000/beyond: all %u/%u/%u/%u/%u/%u/%u,"
+        " used by a lamp %u/%u/%u/%u/%u/%u/%u | held %d, used %u, drawn this pass %u", tag, avOk ? "" : " (UNKNOWN)",
+        all[0], all[1], all[2], all[3], all[4], all[5], all[6],
+        used[0], used[1], used[2], used[3], used[4], used[5], used[6], n, nUsed, fresh);
+    out("%s memory by height from the Avatar, below 1000/300-1000 below/within 300/300-1000 above/above 1000:"
+        " all %u/%u/%u/%u/%u, used by a lamp %u/%u/%u/%u/%u | refused (full) %u, sun maps built %u this second",
+        tag, hAll[0], hAll[1], hAll[2], hAll[3], hAll[4], hUsed[0], hUsed[1], hUsed[2], hUsed[3], hUsed[4],
+        refused, sunMaps);
+}
+

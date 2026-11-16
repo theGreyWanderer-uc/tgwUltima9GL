@@ -19,6 +19,7 @@
 #include "u9renderer.h"
 #include "../../addresses.h"
 #include "../diag/log.h"
+#include "../common/u9time.h"
 #include "../injection/config.h"
 #include "../texture/texoverride.h"
 
@@ -83,14 +84,46 @@ typedef struct {
     int      book;
     float    bloomShare;
     const char *bloomWhy;
+    int      anim;
 } GlRun;
 
-static GlVert   g_verts[U9GL_MAX_VERTS];
+#define U9GL_BF_VERTS   (64 * 1024 * 3)
+#define U9GL_BF_RUNS    2048
+static GlVert   g_verts[U9GL_MAX_VERTS + U9GL_BF_VERTS];
 static unsigned g_count;
 static unsigned g_dropped;
 
 static GlRun    g_runs[U9GL_MAX_RUNS];
 static unsigned g_runCount;
+static GlRun    g_bfRuns[U9GL_BF_RUNS], g_lastBfRuns[U9GL_BF_RUNS];
+static unsigned g_bfRunCount, g_lastBfRunCount, g_bfCount, g_bfDropped, g_lastBfTris;
+static unsigned g_bfPolys;
+static volatile unsigned char g_u9BackFace;
+static volatile unsigned char g_u9Anim;
+static int      g_waterCover = -1;
+static unsigned g_waterCovered;
+void u9gl_water_cover_command(const char *v, void (*out)(const char *fmt, ...))
+{
+    if (g_waterCover < 0) g_waterCover = u9cfg_int("gl_water_cover", 1);
+    if (v && !strcmp(v, "on")) g_waterCover = 1;
+    else if (v && !strcmp(v, "off")) g_waterCover = 0;
+    if (v && *v) u9log_line("GLRAST water cover %s", g_waterCover ? "on" : "off");
+    out("translucent layers in front of the water hide its reflection by their opacity: %s; %u runs last frame",
+        g_waterCover ? "on" : "off", g_waterCovered);
+}
+volatile unsigned char *u9gl_anim_flag(void) { return &g_u9Anim; }
+static int g_casterAnim;
+int u9gl_caster_anim(void) { return g_casterAnim; }
+void u9gl_anim_draw_frame_end(void);
+volatile unsigned char *u9gl_back_face_flag(void) { return &g_u9BackFace; }
+int u9gl_caster_drawn(unsigned first) { return first < U9GL_MAX_VERTS; }
+void u9gl_back_face_stats(unsigned *tris, unsigned *runs, unsigned *dropped, unsigned *polys)
+{
+    *tris = g_lastBfTris;
+    *runs = g_lastBfRunCount;
+    *dropped = g_bfDropped;
+    *polys = g_bfPolys;
+}
 static int      g_depthWrite = 1;
 static int      g_depthTest  = 1;
 static int      g_followDepthTest;
@@ -397,6 +430,7 @@ void u9gl_flush_census(const void *renderer, int slot, unsigned count,
 
 static void run_fill(GlRun *r)
 {
+    r->anim       = g_u9Anim;
     r->depthWrite = g_depthWrite;
     r->depthTest  = g_depthTest;
     r->mat        = g_mat;
@@ -489,11 +523,18 @@ static unsigned run_solidity(const GlRun *r)
     return r->aRawMax;
 }
 
+static int g_sortEffectDepth = -1, g_sortEffectDepthHit;
+
 static int pooled_before(const GlRun *a, const GlRun *b)
 {
     int ba = depth_bucket(a->zMin), bb = depth_bucket(b->zMin);
     if (ba != bb) return ba > bb;
-    if (run_solidity(a) != run_solidity(b)) return run_solidity(a) > run_solidity(b);
+    if (run_solidity(a) != run_solidity(b)) {
+        if (g_sortEffectDepth < 0) g_sortEffectDepth = u9cfg_int("gl_sort_effect_depth", 1);
+        if (!g_sortEffectDepth || (a->texFmt != 0x02 && b->texFmt != 0x02))
+            return run_solidity(a) > run_solidity(b);
+        g_sortEffectDepthHit = 1;
+    }
     if (a->zMin != b->zMin) return a->zMin > b->zMin;
     return 0;
 }
@@ -509,6 +550,199 @@ static void pooled_sort(unsigned *order, unsigned n)
         }
         order[j] = key;
     }
+}
+
+#define SL_MAX 32
+static int g_slTex[SL_MAX], g_slGroup[SL_MAX], g_slRank[SL_MAX], g_slN = -1, g_slOn = 1;
+static unsigned g_slMoved, g_slMovedLast;
+
+static void sort_layers_read(void)
+{
+    const char *s = u9cfg_str("gl_sort_layers", "49,5869,5870,6396,6432");
+    int group = 0, rank = 0;
+    g_slOn = u9cfg_int("gl_sort_layers_on", 1);
+    g_slN = 0;
+    while (s && *s && g_slN < SL_MAX) {
+        char *e;
+        long v;
+        if (*s == ';') { group++; rank = 0; s++; continue; }
+        v = strtol(s, &e, 10);
+        if (e == s) { s++; continue; }
+        g_slTex[g_slN] = (int)v;
+        g_slGroup[g_slN] = group;
+        g_slRank[g_slN] = rank++;
+        g_slN++;
+        s = e;
+    }
+}
+
+static int sort_layer_of(int texId, int *group)
+{
+    int i;
+    for (i = 0; i < g_slN; i++)
+        if (g_slTex[i] == texId) { *group = g_slGroup[i]; return g_slRank[i]; }
+    return -1;
+}
+
+static void sort_layers_apply(unsigned *order, unsigned n)
+{
+    static unsigned at[U9GL_MAX_RUNS], run[U9GL_MAX_RUNS];
+    static int rank[U9GL_MAX_RUNS];
+    unsigned a, b, lo, hi, k, m;
+    int g, grp, maxGroup = -1;
+    if (g_slN < 0) sort_layers_read();
+    if (!g_slOn || !g_slN) return;
+    for (k = 0; k < (unsigned)g_slN; k++) if (g_slGroup[k] > maxGroup) maxGroup = g_slGroup[k];
+    for (lo = 0; lo < n; lo = hi) {
+        int bk = depth_bucket(g_runs[order[lo]].zMin);
+        for (hi = lo + 1; hi < n && depth_bucket(g_runs[order[hi]].zMin) == bk; hi++) {}
+        for (g = 0; g <= maxGroup; g++) {
+            m = 0;
+            for (a = lo; a < hi; a++) {
+                int r = sort_layer_of(g_runs[order[a]].texId, &grp);
+                if (r < 0 || grp != g) continue;
+                at[m] = a;
+                run[m] = order[a];
+                rank[m] = r;
+                m++;
+            }
+            if (m < 2) continue;
+            for (a = 1; a < m; a++) {
+                unsigned rr = run[a];
+                int kk = rank[a];
+                b = a;
+                while (b > 0 && rank[b - 1] > kk) { run[b] = run[b - 1]; rank[b] = rank[b - 1]; b--; }
+                run[b] = rr;
+                rank[b] = kk;
+            }
+            for (a = 0; a < m; a++) {
+                if (order[at[a]] != run[a]) g_slMoved++;
+                order[at[a]] = run[a];
+            }
+        }
+    }
+}
+
+void u9gl_sort_effects_command(const char *v, void (*out)(const char *fmt, ...))
+{
+    if (g_sortEffectDepth < 0) g_sortEffectDepth = u9cfg_int("gl_sort_effect_depth", 1);
+    if (v && !strcmp(v, "on")) g_sortEffectDepth = 1;
+    else if (v && !strcmp(v, "off")) g_sortEffectDepth = 0;
+    else if (v && *v) { out("post sort effects on|off"); return; }
+    if (v && *v) u9log_line("GLRAST sort effects by depth %s", g_sortEffectDepth ? "on" : "off");
+    out("effect layers (ALPHA_8) sorted against other translucent runs by depth, not by vertex alpha: %s%s",
+        g_sortEffectDepth ? "ON" : "off", g_sortEffectDepthHit ? " (has decided pairs)" : "");
+}
+
+void u9gl_sort_layers_command(const char *v, void (*out)(const char *fmt, ...))
+{
+    int i;
+    char list[256];
+    unsigned n = 0;
+    if (g_slN < 0) sort_layers_read();
+    if (v && !strcmp(v, "on")) g_slOn = 1;
+    else if (v && !strcmp(v, "off")) g_slOn = 0;
+    else if (v && *v) { out("post sort layers on|off"); return; }
+    if (v && *v) u9log_line("GLRAST sort layers %s", g_slOn ? "on" : "off");
+    list[0] = 0;
+    for (i = 0; i < g_slN && n + 16 < sizeof list; i++)
+        n += (unsigned)snprintf(list + n, sizeof list - n, "%s%d", i == 0 ? "" : g_slGroup[i] != g_slGroup[i - 1] ? "; " : ",", g_slTex[i]);
+    out("layer groups %s: %s (drawn in that order within a bucket); %u runs moved last frame", g_slOn ? "ON" : "off",
+        g_slN ? list : "(none)", g_slMovedLast);
+}
+
+#define SO_MIN_ALPHA 8u
+#define SO_PAIRS 64
+static struct { int early, late; unsigned n; } g_soPair[SO_PAIRS];
+static int      g_soPairN;
+static unsigned g_soTris, g_soBad, g_soFrames;
+static DWORD    g_soLogAt;
+
+static float tri_key(unsigned first)
+{
+    float q = g_verts[first].q, k;
+    if (g_verts[first + 1].q > q) q = g_verts[first + 1].q;
+    if (g_verts[first + 2].q > q) q = g_verts[first + 2].q;
+    k = q > 1e-9f ? 1.0f / q : 1e30f;
+    return k;
+}
+
+static int so_seen(const GlRun *r)
+{
+    return !r->blendAdd && (!r->aN || r->aSum / r->aN >= SO_MIN_ALPHA);
+}
+
+static void sort_order_watch(const unsigned *order, unsigned n)
+{
+    static float maxKey[U9GL_MAX_RUNS];
+    unsigned a, b, t;
+    for (a = 0; a < n; a++) {
+        const GlRun *r = &g_runs[order[a]];
+        float m = 0.0f;
+        for (t = r->first; t + 2 < r->first + r->count; t += 3) {
+            float k = tri_key(t);
+            if (k > m) m = k;
+        }
+        maxKey[a] = m;
+    }
+    for (a = 0; a < n; a++) {
+        const GlRun *r = &g_runs[order[a]];
+        int bk = depth_bucket(r->zMin);
+        float later = 0.0f;
+        int lateTex = -1;
+        if (!so_seen(r)) { g_soTris += r->count / 3; continue; }
+        for (b = a + 1; b < n; b++) {
+            const GlRun *s = &g_runs[order[b]];
+            if (depth_bucket(s->zMin) != bk) break;
+            if (!so_seen(s) || s->texId == r->texId ||
+                s->x1 < r->x0 || s->x0 > r->x1 || s->y1 < r->y0 || s->y0 > r->y1) continue;
+            if (maxKey[b] > later) { later = maxKey[b]; lateTex = s->texId; }
+        }
+        for (t = r->first; t + 2 < r->first + r->count; t += 3) {
+            g_soTris++;
+            if (lateTex >= 0 && tri_key(t) < later) {
+                int p;
+                g_soBad++;
+                for (p = 0; p < g_soPairN; p++)
+                    if (g_soPair[p].early == r->texId && g_soPair[p].late == lateTex) break;
+                if (p < g_soPairN) g_soPair[p].n++;
+                else if (g_soPairN < SO_PAIRS) {
+                    g_soPair[g_soPairN].early = r->texId;
+                    g_soPair[g_soPairN].late = lateTex;
+                    g_soPair[g_soPairN].n = 1;
+                    g_soPairN++;
+                }
+            }
+        }
+    }
+}
+
+static void sort_order_log(void)
+{
+    DWORD now = u9time_now();
+    g_soFrames++;
+    if (now - g_soLogAt < 2000u) return;
+    if (g_soBad) {
+        char line[512];
+        int n = 0, shown, p, best;
+        unsigned used[SO_PAIRS] = { 0 };
+        n += snprintf(line + n, sizeof line - (size_t)n, "SORTORDER %u of %u sorted translucent triangles in %u frames drawn"
+                      " before a farther, overlapping triangle of another run (%.1f%%); most:", g_soBad, g_soTris, g_soFrames,
+                      g_soTris ? 100.0 * (double)g_soBad / (double)g_soTris : 0.0);
+        for (shown = 0; shown < 6; shown++) {
+            best = -1;
+            for (p = 0; p < g_soPairN; p++)
+                if (!used[p] && (best < 0 || g_soPair[p].n > g_soPair[best].n)) best = p;
+            if (best < 0) break;
+            used[best] = 1;
+            n += snprintf(line + n, sizeof line - (size_t)n, " tex %d under %d: %u;", g_soPair[best].early,
+                          g_soPair[best].late, g_soPair[best].n);
+        }
+        u9log_line("%s", line);
+    }
+    g_soLogAt = now;
+    g_soTris = g_soBad = g_soFrames = 0;
+    g_soPairN = 0;
 }
 
 static void run_begin(void)
@@ -818,6 +1052,100 @@ static void push(const U9Vertex *v, float alpha)
     if (v->z > g_zMax) g_zMax = v->z;
 }
 
+static void bf_tri(const U9Vertex *const v[3], const void *mat)
+{
+    GlRun   *r = g_bfRunCount ? &g_bfRuns[g_bfRunCount - 1] : NULL;
+    int16_t  id = -1, id2 = -1;
+    unsigned fl = 0;
+    int      k;
+    if (g_bfCount + 3 > U9GL_BF_VERTS) { g_bfDropped++; return; }
+    if (mat) {
+        id  = *(const int16_t  *)((const char *)mat + U9_MAT_TEXID);
+        id2 = *(const int16_t  *)((const char *)mat + U9_MAT_TEXID2);
+        fl  = *(const unsigned *)((const char *)mat + U9_MAT_FLAGS);
+    }
+    if (!r || r->mat != mat || r->texId != id || r->texId2 != id2 || r->flags != fl || r->depthWrite != g_depthWrite ||
+        r->anim != g_u9Anim) {
+        if (g_bfRunCount >= U9GL_BF_RUNS) { g_bfDropped++; return; }
+        r = &g_bfRuns[g_bfRunCount++];
+        memset(r, 0, sizeof *r);
+        r->first = U9GL_MAX_VERTS + g_bfCount;
+        r->x0 = r->y0 =  1.0e30f;
+        r->x1 = r->y1 = -1.0e30f;
+        r->zMin = 1.0e30f;
+        r->depthWrite = g_depthWrite;
+        r->depthTest  = g_depthTest;
+        r->mat = mat;
+        r->texId = id;
+        r->texId2 = id2;
+        r->flags = fl;
+        r->chromaKey = mat ? *(const unsigned *)((const char *)mat + U9_MAT_CHROMAKEY) : 0;
+        r->texFmt = g_forceFormat ? (unsigned)g_forceFormat : u9gl_format_for_material(mat);
+        r->blendAdd  = (fl & U9_MATF_ADDITIVE) ? 1 : 0;
+        r->alphaTest = ((fl & U9_MATF_FMT_SELECT) && (fl & U9_MATF_ALPHATEST_B)) ? 1 : 0;
+        r->chroma    = ((fl & U9_MATF_CHROMA_MASK) == U9_MATF_CHROMA_ON) ? 1 : 0;
+        if (u9gl_magenta_keyed(id) && !(fl & U9_MATF_TRANSLUCENT)) r->alphaTest = 1;
+        r->src = g_src;
+        r->epoch = g_epoch;
+        r->bloomShare = -1.0f;
+        r->bloomWhy = "a back face: a caster, never drawn";
+        r->anim = g_u9Anim;
+    }
+    for (k = 0; k < 3; k++) {
+        GlVert *o = &g_verts[U9GL_MAX_VERTS + g_bfCount++];
+        const U9Vertex *p = v[k];
+        float q = (p->z != 0.0f) ? (1.0f / p->z) : 1.0f;
+        o->x = p->x;
+        o->y = p->y;
+        o->z = depth_of(p->z);
+        o->sq = p->s * q;
+        o->tq = p->t * q;
+        o->rq = 0.0f;
+        o->q  = q;
+        o->fog = 0.0f;
+        o->rgba[0] = o->rgba[1] = o->rgba[2] = o->rgba[3] = 255;
+        if (p->x < r->x0) r->x0 = p->x;
+        if (p->y < r->y0) r->y0 = p->y;
+        if (p->x > r->x1) r->x1 = p->x;
+        if (p->y > r->y1) r->y1 = p->y;
+        if (p->z < r->zMin) r->zMin = p->z;
+    }
+    r->count += 3;
+}
+
+int      g_guardPct = -1;
+static unsigned g_guardTris, g_lastGuardTris;
+
+void u9gl_guard_tri(const void *renderer, const U9Vertex *v0, const U9Vertex *v1, const U9Vertex *v2, unsigned flags)
+{
+    const char *r = (const char *)renderer;
+    const U9Vertex *v[3];
+    float W, H, a, b, lo, hi, bx, by;
+    int k, inside = 1;
+    if (g_guardPct < 0) g_guardPct = u9cfg_int("gl_shadow_guard", 50);
+    if (g_guardPct <= 0 || !r || g_u9BackFace) return;
+    W = (float)*(const int *)(r + 0x44);
+    H = (float)*(const int *)(r + 0x48);
+    a = *(const float *)(r + 0x58);
+    b = *(const float *)(r + ((flags & 0x20) ? 0x50 : 0x54));
+    lo = a < b ? a : b;
+    hi = a < b ? b : a;
+    if (W < 16.0f || H < 16.0f) return;
+    bx = W * (float)g_guardPct / 100.0f;
+    by = H * (float)g_guardPct / 100.0f;
+    v[0] = v0; v[1] = v1; v[2] = v2;
+    for (k = 0; k < 3; k++) {
+        if (v[k]->z < lo || v[k]->z > hi) return;
+        if (v[k]->x < -bx || v[k]->x > W + bx || v[k]->y < -by || v[k]->y > H + by) return;
+        if (v[k]->x < 0.0f || v[k]->x > W || v[k]->y < 0.0f || v[k]->y > H) inside = 0;
+    }
+    if (inside) return;
+    g_guardTris++;
+    bf_tri(v, *(const void *const *)(r + U9_OFF_CUR_MATERIAL));
+}
+
+void u9gl_guard_stats(unsigned *tris) { *tris = g_lastGuardTris; }
+
 const void *u9gl_current_renderer(void) { return g_renderer; }
 
 void u9gl_tri(const void *renderer,
@@ -825,10 +1153,17 @@ void u9gl_tri(const void *renderer,
               float alpha, const void *mat)
 {
     g_renderer = renderer;
+    if (g_u9BackFace) {
+        const U9Vertex *vv[3];
+        vv[0] = v0; vv[1] = v1; vv[2] = v2;
+        bf_tri(vv, mat);
+        return;
+    }
     if (!g_fogBSampled) { g_fogBSampled = 1; fogb_sample(); }
     if (g_count + 3 > U9GL_MAX_VERTS) { g_dropped++; return; }
     if (!g_runCount) run_begin();
     material_set(mat);
+    if (g_runCount && g_runs[g_runCount - 1].anim != g_u9Anim) run_begin();
 
     {
         GlRun *r = &g_runs[g_runCount - 1];
@@ -855,10 +1190,12 @@ void u9gl_poly(const void *renderer, unsigned count, const void *verts,
 
     if (!verts || count < 3) return;
     g_renderer = renderer;
+    if (g_u9BackFace) { g_bfPolys++; return; }
     if (!g_fogBSampled) { g_fogBSampled = 1; fogb_sample(); }
     if (g_listPass) mat = NULL;
     if (!g_runCount) run_begin();
     material_set(mat);
+    if (g_runCount && g_runs[g_runCount - 1].anim != g_u9Anim) run_begin();
 
     if (mat) {
         unsigned w = *(const unsigned *)((const char *)mat + U9_MAT_TEXW);
@@ -1350,10 +1687,50 @@ unsigned u9gl_casters(void (*fn)(void *ctx, unsigned first, unsigned count, unsi
             r->texId == U9TEX_WATER ||
             near_ui(r))
             continue;
+        g_casterAnim = r->anim;
         fn(ctx, r->first, r->count, r->glTex, r->alphaTest || r->chroma);
         n++;
     }
+    for (i = 0; i < g_lastBfRunCount; i++) {
+        const GlRun *r = &g_lastBfRuns[i];
+        unsigned tex = 0, j;
+        int cut;
+        if (!r->count || !r->depthWrite || r->blendAdd || r->zMin <= 10.0f || r->texId == 1900 ||
+            r->texId == U9TEX_BLOB_SHADOW || r->texFmt == 0x02 || r->texId == U9TEX_WATER)
+            continue;
+        cut = r->alphaTest || r->chroma;
+        if (cut)
+            for (j = 0; j < g_lastRunCount && !tex; j++)
+                if (g_lastRuns[j].texId == r->texId && g_lastRuns[j].texId2 == r->texId2) tex = g_lastRuns[j].glTex;
+        g_casterAnim = r->anim;
+        fn(ctx, r->first, r->count, tex, cut);
+        n++;
+    }
+    g_casterAnim = 0;
     return n;
+}
+
+void u9gl_all_runs(void (*fn)(void *ctx, unsigned first, unsigned count, int texId, int back, const char *why),
+                   void *ctx)
+{
+    unsigned i;
+    for (i = 0; i < g_lastRunCount + g_lastBfRunCount; i++) {
+        int back = i >= g_lastRunCount;
+        const GlRun *r = back ? &g_lastBfRuns[i - g_lastRunCount] : &g_lastRuns[i];
+        const char *why = NULL;
+        if (!r->count) continue;
+        if (!r->depthWrite) why = "writes no depth";
+        else if (r->blendAdd) why = "additive";
+        else if (r->deferred == 2) why = "slot 37's second pass";
+        else if (r->src == 34 && !back) why = "slot 34 polygons";
+        else if (r->zMin <= 10.0f) why = "nearer than 10 (interface)";
+        else if (r->texId == 1900) why = "the reticle";
+        else if (r->texId == U9TEX_BLOB_SHADOW) why = "the blob shadow";
+        else if (r->texFmt == 0x02) why = "ALPHA_8 (an effect)";
+        else if (r->texId == U9TEX_WATER) why = "water";
+        else if (!back && near_ui(r)) why = "the journal";
+        fn(ctx, r->first, r->count, r->texId, back, why);
+    }
 }
 
 int u9gl_reticle_centre(float *x, float *y)
@@ -1961,14 +2338,20 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
             if (g_runs[i].count && g_runs[i].epoch > maxEpoch)
                 maxEpoch = g_runs[i].epoch;
         moon_frame();
+        sort_order_log();
+        g_slMovedLast = g_slMoved;
+        g_slMoved = 0;
         for (ep = 0; ep <= maxEpoch; ep++)
         for (pass = 0; pass < 3; pass++) {
         n = 0;
         for (i = 0; i < g_runCount; i++)
             if (g_runs[i].count && g_runs[i].deferred == pass &&
                 g_runs[i].epoch == ep) order[n++] = i;
-        if (pass == 1)
+        if (pass == 1) {
             pooled_sort(order, n);
+            sort_layers_apply(order, n);
+            sort_order_watch(order, n);
+        }
         for (a = 0; a < n; a++) {
             i = order[a];
             if (!g_useGeom) continue;
@@ -2144,6 +2527,26 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
                     glDrawArrays(GL_TRIANGLES, (GLint)r->first, (GLsizei)r->count);
                 }
                 u9gl_wbuf_mark(0);
+                if (g_waterCover < 0) g_waterCover = u9cfg_int("gl_water_cover", 1);
+                g_waterCovered = 0;
+                if (g_waterCover) {
+                    float ref = (float)u9cfg_int("alpha_ref", 128) / 255.0f;
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+                    u9gl_wbuf_mark(2);
+                    for (i = 0; i < g_runCount; i++) {
+                        const GlRun *r = &g_runs[i];
+                        if (!r->count || r->deferred != 1 || r->texId == U9TEX_WATER || r->blendAdd ||
+                            near_ui(r) || u9fog_hides(r->texId) || u9beam_hides(r->texId)) continue;
+                        u9gl_wbuf_run(r->glTex != 0, r->alphaTest || r->chroma, ref, 0, 0, 0.0f, 0.0f);
+                        if (r->glTex) glBindTexture(GL_TEXTURE_2D, r->glTex);
+                        glDrawArrays(GL_TRIANGLES, (GLint)r->first, (GLsizei)r->count);
+                        g_waterCovered++;
+                    }
+                    u9gl_wbuf_mark(0);
+                    u9gl_wbuf_run(0, 0, 0.0f, 0, 0, 0.0f, 0.0f);
+                    glDisable(GL_BLEND);
+                }
                 glDepthFunc((GLenum)df);
                 glDepthMask(GL_TRUE);
                 u9glpost_water_mark_end();
@@ -2240,6 +2643,15 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
     g_censusCount = g_censusLost = 0;
     g_count    = 0;
     g_runCount = 0;
+    g_lastBfTris = g_bfCount / 3;
+    g_lastBfRunCount = g_bfRunCount;
+    memcpy(g_lastBfRuns, g_bfRuns, g_bfRunCount * sizeof(GlRun));
+    g_bfCount = g_bfRunCount = 0;
+    u9gl_anim_draw_frame_end();
+    g_u9Anim = 0;
+    g_u9BackFace = 0;
+    g_lastGuardTris = g_guardTris;
+    g_guardTris = 0;
     material_forget();
     run_begin();
 }
@@ -2285,6 +2697,15 @@ void u9gl_discard_frame(void)
     g_censusCount = g_censusLost = 0;
     g_count    = 0;
     g_runCount = 0;
+    g_lastBfTris = g_bfCount / 3;
+    g_lastBfRunCount = g_bfRunCount;
+    memcpy(g_lastBfRuns, g_bfRuns, g_bfRunCount * sizeof(GlRun));
+    g_bfCount = g_bfRunCount = 0;
+    u9gl_anim_draw_frame_end();
+    g_u9Anim = 0;
+    g_u9BackFace = 0;
+    g_lastGuardTris = g_guardTris;
+    g_guardTris = 0;
     material_forget();
     run_begin();
 }

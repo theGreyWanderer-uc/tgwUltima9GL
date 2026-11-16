@@ -581,6 +581,11 @@ public static class SettingsCatalog
             Diag("diag_effect_census", "Glows and effects",
                 "Each glow and effect texture drawn, with its colour and where it was; a table when the game quits. "
                 + "The console's post effects lists the current frame's.", false),
+            Diag("diag_shadow_cost", "Shadow cost",
+                "Once a second, what the shadows cost: time spent on the guard band, lamp shadows and sun shadows, "
+                + "the whole frame, the GPU's passes, which shadow switches were on, how many lights are near you and how far "
+                + "each shadow-casting lamp is. The console's pool shadow cost "
+                + "turns it on and off in play.", false),
             Diag("diag_stuck_watch", "Stuck flyers",
                 "Birds and other flyers that keep trying to move and cannot.", false),
             Diag("diag_bag_watch", "Bags and containers",

@@ -61,7 +61,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (e.PropertyName != nameof(WebDashboardViewModel.Enabled)) return;
             OnPropertyChanged(nameof(CanCloseOnPlay));
-            if (WebDashboard.Enabled && !TelemetryFeed.IsOverridden) TelemetryFeed.IsSwitchOn = true;
+            if (!TelemetryFeed.IsOverridden) TelemetryFeed.IsSwitchOn = WebDashboard.Enabled;
         };
         LauncherVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
         _deployer = new Deployer(folder, LauncherVersion);
@@ -378,6 +378,13 @@ public sealed class MainViewModel : ObservableObject
 
     private void Revert() => LoadSettings();
 
+    private void GateTelemetryFeed()
+    {
+        if (WebDashboard.Enabled || !TelemetryFeed.IsSwitchOn || TelemetryFeed.IsOverridden) return;
+        TelemetryFeed.IsSwitchOn = false;
+        if (Save()) _log.Write("Play: the web dashboard is off, so the game feed (diag_telemetry) was switched off");
+    }
+
     private async void Play()
     {
         if (IsDirty)
@@ -388,6 +395,7 @@ public sealed class MainViewModel : ObservableObject
             if (answer == MessageBoxResult.No) Revert();
         }
 
+        GateTelemetryFeed();
         Refresh();
         if (!CanPlay)
         {
