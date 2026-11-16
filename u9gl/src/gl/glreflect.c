@@ -477,6 +477,8 @@ static void file_tri(RCtx *c, const float w[9], const float st[6], const unsigne
     }
 }
 
+int u9gl_caster_drawn(unsigned first);
+
 static void collect(void *ctx, unsigned first, unsigned count, unsigned glTex, int cutout)
 {
     RCtx *c = (RCtx *)ctx;
@@ -484,6 +486,7 @@ static void collect(void *ctx, unsigned first, unsigned count, unsigned glTex, i
     const char *base = (const char *)u9gl_caster_vertices(&stride);
     float edgeX = c->v->engineW - 1.5f, edgeY = c->v->engineH - 1.5f;
     unsigned t;
+    if (!u9gl_caster_drawn(first)) return;
     for (t = first; t + 2 < first + count; t += 3) {
         float w[9], st[6], mx, my;
         unsigned char col[12];

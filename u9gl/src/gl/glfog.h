@@ -6,6 +6,7 @@ typedef struct {
     float top;
     float density;
     float soft;
+    float edge;
     float box[4];
     float rgb[3];
     float noise;

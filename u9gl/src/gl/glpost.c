@@ -14,6 +14,14 @@
 #include "../fix/lightwatch.h"
 #include "glspaces.h"
 #include "glshadow.h"
+#include "glbackface.h"
+#include "glanimdraw.h"
+void u9gl_back_face_stats(unsigned *tris, unsigned *runs, unsigned *dropped, unsigned *polys);
+void u9gl_sort_layers_command(const char *v, void (*out)(const char *fmt, ...));
+void u9gl_sort_effects_command(const char *v, void (*out)(const char *fmt, ...));
+void u9gl_water_cover_command(const char *v, void (*out)(const char *fmt, ...));
+extern int g_guardPct;
+void u9gl_guard_stats(unsigned *tris);
 #include "glbloom.h"
 #include "glbeam.h"
 #include "glrays.h"
@@ -262,6 +270,9 @@ static int    g_probeWanted;
 static int    g_poolProbeWanted;
 static void (*g_poolProbeOut)(const char *fmt, ...);
 static int    g_ppX = -1, g_ppY;
+static int    g_ppSlot[MAX_POOL_LIGHTS], g_ppFill[MAX_POOL_LIGHTS], g_ppN;
+static float  g_ppAtX = -1.0f, g_ppAtY;
+static float  g_ppW[MAX_POOL_LIGHTS];
 static unsigned char g_ppFrame[4], g_ppAlb[4];
 static int    g_lastRooms[MAX_POOL_LIGHTS][4];
 static void (*g_probeOut)(const char *fmt, ...);
@@ -315,7 +326,7 @@ static const char *const k_fragment =
     "uniform sampler2D u_bloom;\n"
     "uniform vec4  u_fogK;\n"
     "uniform vec4  u_fogBox;\n"
-    "uniform vec3  u_fogC;\n"
+    "uniform vec4  u_fogC;\n"
     "uniform vec4  u_underK;\n"
     "uniform vec4  u_underA;\n"
     "uniform vec3  u_underC;\n"
@@ -738,8 +749,9 @@ static const char *const k_fragment =
     "}\n"
     "float fog_density(vec3 s, float near) {\n"
     "    float h = smoothstep(u_fogK.y, u_fogK.y - u_fogK.w, s.z);\n"
-    "    float e = smoothstep(u_fogBox.x, u_fogBox.x + 300.0, s.x) * (1.0 - smoothstep(u_fogBox.z - 300.0, u_fogBox.z, s.x))\n"
-    "            * smoothstep(u_fogBox.y, u_fogBox.y + 300.0, s.y) * (1.0 - smoothstep(u_fogBox.w - 300.0, u_fogBox.w, s.y));\n"
+    "    float fe = u_fogC.w;\n"
+    "    float e = smoothstep(u_fogBox.x, u_fogBox.x + fe, s.x) * (1.0 - smoothstep(u_fogBox.z - fe, u_fogBox.z, s.x))\n"
+    "            * smoothstep(u_fogBox.y, u_fogBox.y + fe, s.y) * (1.0 - smoothstep(u_fogBox.w - fe, u_fogBox.w, s.y));\n"
     "    if (h * e <= 0.0) return 0.0;\n"
     "    vec3 q = s * u_fogN.y + vec3(u_fogN.z * 0.05, u_fogN.z * 0.03, u_fogN.z * 0.01);\n"
     "    float n = fnoise(q);\n"
@@ -767,7 +779,7 @@ static const char *const k_fragment =
     "    }\n"
     "    float tau = acc / 6.0 * seg;\n"
     "    float T = exp(-tau);\n"
-    "    vec3 fc = u_fogC;\n"
+    "    vec3 fc = u_fogC.rgb;\n"
     "    if (u_night.w >= 0.0) fc = mix(fc, vec3(dot(fc, vec3(0.299, 0.587, 0.114))), u_night.w) * u_night.xyz;\n"
     "    return c * T + fc * (1.0 - T);\n"
     "}\n"
@@ -2342,22 +2354,34 @@ static void pool_probe(const U9FrameView *v, const GLfloat *lp, const GLfloat *l
     int px, py, qx, qy, ax, ay, bx, by, i, shown = 0;
     float w, wa, wb, P[3], A[3], B[3], N[3], cam[3], len, tailR;
     g_ppX = -1;
-    reticle_pixel(v, &px, &py);
+    if (g_ppAtX >= 0.0f) {
+        px = v->vx + (int)(g_ppAtX * (float)(v->vw - 1) / 100.0f);
+        py = v->vy + v->vh - 1 - (int)(g_ppAtY * (float)(v->vh - 1) / 100.0f);
+    } else {
+        reticle_pixel(v, &px, &py);
+    }
     if (!find_depth(v, px, py, 4, 16.0f, &qx, &qy, &w)) { if (out) out("nothing under the reticle"); return; }
     mark_pixel(qx, qy);
     pixel_to_world(v, qx, qy, w, P);
-    if (!find_depth(v, qx + 2, qy, 0, 16.0f, &ax, &ay, &wa) || !find_depth(v, qx, qy + 2, 0, 16.0f, &bx, &by, &wb)) {
-        if (out) out("no depth beside the crosshair");
-        return;
+    {
+        static const int off[6] = { 2, -2, 4, -4, 8, -8 };
+        int oa = -1, ob = -1, k;
+        for (k = 0; k < 6 && oa < 0; k++) if (find_depth(v, qx + off[k], qy, 0, 16.0f, &ax, &ay, &wa)) oa = k;
+        for (k = 0; k < 6 && ob < 0; k++) if (find_depth(v, qx, qy + off[k], 0, 16.0f, &bx, &by, &wb)) ob = k;
+        if (oa >= 0 && ob >= 0) {
+            pixel_to_world(v, ax, ay, wa, A);
+            pixel_to_world(v, bx, by, wb, B);
+            for (i = 0; i < 3; i++) { A[i] -= P[i]; B[i] -= P[i]; }
+            N[0] = A[1] * B[2] - A[2] * B[1];
+            N[1] = A[2] * B[0] - A[0] * B[2];
+            N[2] = A[0] * B[1] - A[1] * B[0];
+            len = sqrtf(N[0] * N[0] + N[1] * N[1] + N[2] * N[2]);
+            if (len > 1e-6f) for (i = 0; i < 3; i++) N[i] /= len;
+        } else {
+            N[0] = N[1] = 0.0f; N[2] = 1.0f;
+            if (out) out("no depth beside the point: taken as level ground");
+        }
     }
-    pixel_to_world(v, ax, ay, wa, A);
-    pixel_to_world(v, bx, by, wb, B);
-    for (i = 0; i < 3; i++) { A[i] -= P[i]; B[i] -= P[i]; }
-    N[0] = A[1] * B[2] - A[2] * B[1];
-    N[1] = A[2] * B[0] - A[0] * B[2];
-    N[2] = A[0] * B[1] - A[1] * B[0];
-    len = sqrtf(N[0] * N[0] + N[1] * N[1] + N[2] * N[2]);
-    if (len > 1e-6f) for (i = 0; i < 3; i++) N[i] /= len;
     cam[0] = v->m[3]; cam[1] = v->m[7]; cam[2] = v->m[11];
     if (N[0] * (cam[0] - P[0]) + N[1] * (cam[1] - P[1]) + N[2] * (cam[2] - P[2]) < 0.0f)
         for (i = 0; i < 3; i++) N[i] = -N[i];
@@ -2405,6 +2429,11 @@ static void pool_probe(const U9FrameView *v, const GLfloat *lp, const GLfloat *l
             shown++;
         }
         if (dist < 600.0f && lc[i * 4 + 3] <= 0.5f) u9shadow_report_near(&lp[i * 4], 400.0f, u9log_line);
+        if (lc[i * 4 + 3] <= 0.5f) {
+            int slot = i < g_ppN ? g_ppSlot[i] : -1;
+            u9shadow_probe_ray(v, &lp[i * 4], P, reachEnd, slot, i < g_ppN && slot >= 0 ? g_ppW[i] : 0.0f,
+                               !(i < g_ppN && g_ppFill[i]), g_shadowBias, g_shadowSlope, u9log_line);
+        }
     }
     if (out && !shown) out("no light reaches this point by distance");
     g_ppX = qx;
@@ -2422,7 +2451,7 @@ static int fill_cut_here(void)
     char key[16];
     int map;
     if (g_fillCut < 0) {
-        const char *s = u9cfg_str("gl_fill_lights_keep", "9,14");
+        const char *s = u9cfg_str("gl_fill_lights_keep", "");
         size_t i, n = 1;
         g_fillCut = u9cfg_int("gl_fill_lights_cut", 1);
         g_fillKeep[0] = ',';
@@ -2862,6 +2891,7 @@ static void sun_probe(const U9FrameView *v, const U9SunMap *sm)
     u9log_line("GLSUN probe: %s", line);
     if (out) out("%s", line);
     HeapFree(GetProcessHeap(), 0, map);
+    u9shadow_sun_probe_ray(v, P, N, sm->l, out);
 }
 
 void u9glpost_sun_probe(void (*out)(const char *fmt, ...))
@@ -3026,7 +3056,7 @@ void u9glpost_end(int surfW, int surfH)
             fUniform4f(g_uFogK, fp.on && have && v.depthMode == 2 && !u9light_book_open() ? 1.0f : 0.0f,
                        fp.top, fp.density, fp.soft);
             fUniform4f(g_uFogBox, fp.box[0], fp.box[1], fp.box[2], fp.box[3]);
-            fUniform3f(g_uFogC, fp.rgb[0], fp.rgb[1], fp.rgb[2]);
+            fUniform4f(g_uFogC, fp.rgb[0], fp.rgb[1], fp.rgb[2], fp.edge);
             fUniform4f(g_uFogN, fp.noise, fp.scale, fp.time, fp.reach);
         }
         {
@@ -3221,7 +3251,7 @@ void u9glpost_end(int surfW, int surfH)
                     for (k = 0; k < m && g_shadowOn && nWant < count; k++) {
                         if (k == pick || (all[idx[k]].flags & 0x02u) || fw[k] < 0.99f ||
                             all[idx[k]].type == U9TYPE_LAVA_LIGHT ||
-                            all[idx[k]].type == U9TYPE_FIRE_LIGHT ||
+                            (all[idx[k]].type == U9TYPE_FIRE_LIGHT && !g_shadowFire) ||
                             all[idx[k]].type == U9TYPE_RUNE_LIGHT || all[idx[k]].type == U9TYPE_PILLAR_LIGHT || all[idx[k]].type == U9TYPE_GATE_LIGHT) continue;
                         want[nWant++] = k;
                     }
@@ -3275,6 +3305,12 @@ void u9glpost_end(int surfW, int surfH)
                     fUseProgram(g_prog);
                     fUniform4f(g_uShadowK, g_shadowBias, g_shadowSlope, g_shadowStrength, g_shadowSoft);
                     if (m) fUniform2fv(g_uLsh, m, lsh);
+                    for (k = 0; k < m && k < MAX_POOL_LIGHTS; k++) {
+                        g_ppSlot[k] = (int)lsh[k * 2];
+                        g_ppW[k] = lsh[k * 2 + 1];
+                        g_ppFill[k] = all[idx[k]].type == U9TYPE_FILL_LIGHT;
+                    }
+                    g_ppN = m;
                 }
                 if ((unsigned)m > g_poolLightsMax) g_poolLightsMax = (unsigned)m;
                 if (n > g_maxLights) g_capLights++;
@@ -3641,6 +3677,18 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
                              : "effect layers sample mips as usual");
         return;
     }
+    if (arg && !strncmp(arg, "sort effects", 12)) {
+        const char *v = arg + 12;
+        while (*v == ' ') v++;
+        u9gl_sort_effects_command(v, out);
+        return;
+    }
+    if (arg && !strncmp(arg, "sort layers", 11)) {
+        const char *v = arg + 11;
+        while (*v == ' ') v++;
+        u9gl_sort_layers_command(v, out);
+        return;
+    }
     if (arg && !strncmp(arg, "effects depth", 13)) {
         const char *v = arg + 13;
         while (*v == ' ') v++;
@@ -3725,6 +3773,12 @@ void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
     if (arg && !strncmp(arg, "water", 5) && (arg[5] == 0 || arg[5] == ' ')) {
         const char *v = arg + 5;
         while (*v == ' ') v++;
+        if (!strncmp(v, "cover", 5) && (v[5] == ' ' || !v[5])) {
+            const char *w = v + 5;
+            while (*w == ' ') w++;
+            u9gl_water_cover_command(w, out);
+            return;
+        }
         if (u9reflect_command(v, out)) {}
         else if (!strcmp(v, "on")) g_waterOn = 1;
         else if (!strcmp(v, "off")) g_waterOn = 0;
@@ -3950,17 +4004,27 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
     else if (!strcmp(arg, "fill cut") || !strcmp(arg, "fill keep")) {
         fill_cut_here();
         g_fillCut = arg[5] == 'c';
-        out(g_fillCut ? "fill lights (type 1510) left out, except on maps%s" : "fill lights drawn on every map",
-            g_fillCut ? g_fillKeep : "");
+        if (!g_fillCut) out("fill lights drawn on every map");
+        else if (!strcmp(g_fillKeep, ",,")) out("fill lights (type 1510) left out on every map");
+        else out("fill lights (type 1510) left out, except on maps%s", g_fillKeep);
         return;
     }
     else if (!strcmp(arg, "replace on"))  g_replace = 1;
     else if (!strcmp(arg, "replace off")) g_replace = 0;
-    else if (!strcmp(arg, "probe")) {
+    else if (!strcmp(arg, "probe") || !strncmp(arg, "probe ", 6)) {
+        float ax = -1.0f, ay = -1.0f;
         if (!g_pools || !g_want) { out("needs the pools on (pool on)"); return; }
+        if (arg[5] && sscanf(arg + 6, "%f %f", &ax, &ay) != 2) {
+            out("pool probe [<across> <down>]: a point on screen in percent, 0 0 the top left; bare: the reticle");
+            return;
+        }
+        if (arg[5] && (ax < 0.0f || ax > 100.0f || ay < 0.0f || ay > 100.0f)) { out("percent, 0 to 100"); return; }
+        g_ppAtX = ax;
+        g_ppAtY = ay;
         g_poolProbeWanted = 1;
         g_poolProbeOut = out;
-        out("the pools at the crosshair (also in the log):");
+        if (ax >= 0.0f) out("the pools at %.0f%% across, %.0f%% down (also in the log; marked yellow for 3 s):", ax, ay);
+        else out("the pools at the reticle (also in the log):");
         return;
     }
     else if (!strcmp(arg, "rooms")) {
@@ -4008,6 +4072,58 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
             g_poolDebug = g_poolDebug == 3 ? 0 : 3;
             out(g_poolDebug == 3 ? "shadow debug: green lit by the shadow light, red in its shadow, dim elsewhere"
                                  : "shadow debug off");
+        } else if (!strncmp(v, "memory", 6) && (v[6] == ' ' || !v[6])) {
+            const char *w = v + 6;
+            while (*w == ' ') w++;
+            if (!strcmp(w, "on")) g_shadowMem = 1;
+            else if (!strcmp(w, "off")) g_shadowMem = 0;
+            else if (!strcmp(w, "animated on")) g_shadowMemAnimated = 1;
+            else if (!strcmp(w, "animated off")) g_shadowMemAnimated = 0;
+            else if (*w) { out("pool shadow memory on|off | animated on|off"); return; }
+            if (*w) u9log_line("GLPOST shadow memory: %s, animated objects %s", g_shadowMem ? "on" : "off",
+                               g_shadowMemAnimated ? "kept" : "left out");
+            out("the memory keeps animated objects (characters...): %s%s", g_shadowMemAnimated ? "on" : "OFF - they cast only while drawn",
+                u9gl_anim_draw_installed() ? "" : " (marking not installed: nothing is told apart)");
+            out("lamp shadows from memory %s: walls and floors that left the screen still cast; this frame %u"
+                " triangles from memory, %u left out as fixtures, %u us choosing them", g_shadowMem ? "on" : "off",
+                g_shadowMemTris, g_shadowMemFix, g_shadowMemUs);
+            return;
+        } else if (!strncmp(v, "backfaces", 9) && (v[9] == ' ' || !v[9])) {
+            const char *w = v + 9;
+            unsigned tris, runs, dropped, polys;
+            while (*w == ' ') w++;
+            if (!strcmp(w, "on")) g_bfOn = 1;
+            else if (!strcmp(w, "off")) g_bfOn = 0;
+            else if (*w) { out("pool shadow backfaces on|off"); return; }
+            if (*w) u9log_line("GLPOST back faces as casters: %s", g_bfOn ? "on" : "off");
+            u9gl_back_face_stats(&tris, &runs, &dropped, &polys);
+            out("back faces as shadow casters %s%s: last frame %u triangles in %u runs; %u sent in all, %u left out"
+                " (translucent, second colour, not bound), %u lost for room, %u as polygons (left out)",
+                g_bfOn ? "ON" : "off", u9gl_back_face_installed() ? "" : " - NOT INSTALLED (see the log)",
+                tris, runs, g_bfSent, g_bfSkipped, dropped, polys);
+            out("they cast for lamps and the sun alike, and the memory keeps them; never drawn on screen");
+            u9gl_back_face_held_report(out);
+            return;
+        } else if (!strncmp(v, "guard", 5) && (v[5] == ' ' || !v[5])) {
+            unsigned gt;
+            if (v[5]) {
+                g_guardPct = atoi(v + 6);
+                if (g_guardPct < 0) g_guardPct = 0;
+                if (g_guardPct > 200) g_guardPct = 200;
+                u9log_line("GLPOST shadow guard band: %d%%", g_guardPct);
+            }
+            u9gl_guard_stats(&gt);
+            if (g_guardPct > 0)
+                out("guard band %d%% of the view beyond each edge: what lies there casts shadows (sun and lamps),"
+                    " never drawn; last frame %u triangles", g_guardPct, gt);
+            else out("guard band off: only what is on screen casts (pool shadow guard <percent> to try, e.g. 50)");
+            return;
+        } else if (!strcmp(v, "fire on") || !strcmp(v, "fire off")) {
+            g_shadowFire = v[6] == 'n';
+            u9log_line("GLPOST fire lights cast shadows: %s", g_shadowFire ? "on" : "off");
+            out(g_shadowFire ? "fire lights (learnt from flames) take shadow cubes by the ranking, like lamps"
+                             : "fire lights cast no shadows: they light through anything (as before)");
+            return;
         } else if (!strcmp(v, "blob on"))  g_shadowHideBlob = 1;
         else if (!strcmp(v, "blob off")) g_shadowHideBlob = 0;
         else if (!strcmp(v, "cutouts on"))  g_shadowCutouts = 1;
@@ -4052,7 +4168,8 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
             g_shadowStrength = (float)pc / 100.0f;
         } else if (*v) {
             out("pool shadow on|off | view | debug | cutouts on|off | size <texels> | bias <units> |"
-                " strength <percent> | soft <percent> | slope <percent> | near <units> | fixture <units> | part <units> | column <units> | count <1-8> | blob on|off (hide the game's blob shadow)");
+                " strength <percent> | soft <percent> | slope <percent> | near <units> | fixture <units> | part <units> | column <units> | count <1-8> | blob on|off (hide the game's blob shadow) |"
+                " memory on|off | backfaces on|off | fire on|off | guard <percent, 0 off>");
             return;
         }
     }
@@ -4147,6 +4264,17 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
     out("shadow cubes drawn %u; the last: %u triangles, %u fixture triangles, %u runs drawn, %u culled;"
         " the Avatar's lamp changed %u times", g_shadowBuilds, g_shadowTris, g_shadowFixtures,
         g_shadowRunsDrawn, g_shadowRunsCulled, g_shadowChanges);
+    out("shadows from memory %s: %u triangles from it last frame, %u left as fixtures, %u us choosing",
+        g_shadowMem ? "on" : "off", g_shadowMemTris, g_shadowMemFix, g_shadowMemUs);
+    {
+        unsigned tris, runs, dropped, polys;
+        u9gl_back_face_stats(&tris, &runs, &dropped, &polys);
+        unsigned gt;
+        u9gl_guard_stats(&gt);
+        out("back faces as casters %s%s: %u triangles last frame; fire lights cast %s; guard band %d%% (%u triangles)",
+            g_bfOn ? "ON" : "off", u9gl_back_face_installed() ? "" : " (not installed)", tris,
+            g_shadowFire ? "ON" : "off", g_guardPct > 0 ? g_guardPct : 0, gt);
+    }
     out("the game's blob shadow under characters (texture %d) %s", U9TEX_BLOB_SHADOW,
         u9shadow_hide_blob() ? "hidden" : g_shadowHideBlob ? "drawn (shadows off)" : "drawn");
 }

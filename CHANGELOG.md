@@ -2,6 +2,22 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
+## 0.5.8 (2026-11-16)
+
+- **Fill lights are off on every map.** These are invisible lights the game scatters to lift the
+  dark; as light pools they shone through walls, for example lighting the ground outside the
+  Gypsy's wagon from inside it. Britannia and the Avatar's house kept them until now.
+  **After unzipping, press Update in the launcher** so the new setting takes effect.
+- **Lamp shadows hold steady.** By the Gypsy's wagon, lamp light and shadow flashed and shadows
+  vanished as the camera turned. Lamps now remember walls that have left the screen, walls seen
+  from behind cast shadows, and fires cast shadows like lamps. This costs frame rate in busy spots.
+- **Tree shadows no longer come and go as you turn.** A tree whose top was just above the picture
+  cast no shadow on the grass in view; it does now.
+- **No shadow trail behind a flying Avatar.**
+- **Waterfalls look right.** Teal shards on the waterfall near the Avatar's house, and spray
+  drawn under the water on Britannia's falls, are fixed; the trees and cliff no longer show
+  reflected on the falling water.
+
 ## 0.5.7 (2026-11-15)
 
 - **Keep playing behind other windows.** Switch to another program and the game keeps running,

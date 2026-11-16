@@ -136,6 +136,8 @@ U9LOG_SRC="
     src/gl/glpost.c
     src/gl/glwaterzones.c
     src/gl/gltwosided.c
+    src/gl/glbackface.c
+    src/gl/glanimdraw.c
     src/gl/glspaces.c
     src/gl/glshadow.c
     src/gl/glbloom.c

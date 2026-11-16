@@ -84,7 +84,7 @@ static void shadow_command(const char *v, void (*out)(const char *fmt, ...))
                          : "water writes no depth: shadows land on the bed under it (as before)");
     } else if (!strcmp(v, "probe")) {
         u9glpost_sun_probe(out);
-        out("sun probe under the mouse (also in the log) - with the sun up and its shadows drawn:");
+        out("sun probe at the reticle (also in the log) - with the sun or moon casting:");
     } else if (!strncmp(v, "bias ", 5)) {
         g_sunBias = (float)atof(v + 5);
         if (g_sunBias < 0.0f) g_sunBias = 0.0f;

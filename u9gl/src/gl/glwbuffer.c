@@ -137,7 +137,8 @@ static const char *const k_fragment =
     "    gl_FragData[5] = (u_lightable != 0 && gl_FragDepth < 1.0) ? vec4(0.0, 0.0, 0.0, c.a) : c;\n"
     "    gl_FragData[4] = (u_ui != 0) ? vec4(-1.0e6 * float(u_ui) * ua, 0.0, 0.0, ua)\n"
     "                   : vec4(wx, 0.0, 0.0, 1.0);\n"
-    "    if (u_mark != 0) gl_FragData[0] = vec4(1.0);\n"
+    "    if (u_mark == 1) gl_FragData[0] = vec4(1.0);\n"
+    "    else if (u_mark == 2) gl_FragData[0] = vec4(0.0, 0.0, 0.0, c.a);\n"
     "}\n";
 
 static void *gl_proc(const char *name)
@@ -366,7 +367,7 @@ void u9gl_wbuf_ui(int on)
 void u9gl_wbuf_mark(int on)
 {
     if (!g_prog) return;
-    fUniform1i(g_uMark, on ? 1 : 0);
+    fUniform1i(g_uMark, on);
 }
 
 void u9gl_wbuf_set_jitter(float x, float y)
