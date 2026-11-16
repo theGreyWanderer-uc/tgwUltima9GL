@@ -561,6 +561,14 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x0054FEE5u, "U9Trigger_Execute opcode 0x60, record bit clear: CALL [EAX+0x1E8] (FF 90 E8 01 00 00), PUSH 1 - breath tracking off" },
     [U9SYM_FACE_TWO_SIDED_TEST] =
         { 0x0056261Fu, "the polygon loop's facing test, TEST AH,4 / JNZ 0x0056264C (F6 C4 04 75 28): face flag 0x400 skips it - two-sided; 0x00562624 the test itself (gltwosided.c)" },
+    [U9SYM_FACE_BACK_SKIP] =
+        { 0x00562641u, "the polygon loop, a back face: INC [0x0098C770] / JMP 0x0056297C (FF 05 70 C7 98 00 E9 30 03 00 00) - counted and skipped (glbackface.c)" },
+    [U9SYM_DRAWOBJ_PARTS_BEGIN] =
+        { 0x0055FED2u, "Camera_DrawObjects, MOV ECX,[ESI+0xFC] (8B 8E FC 00 00 00): after renderer slot 2, before the object's model is pushed (0x0055FFC1) and its part tree walked (0x0055FFCD/DB); no jump lands inside (glanimdraw.c)" },
+    [U9SYM_DRAWOBJ_PARTS_END] =
+        { 0x0055FFE0u, "Camera_DrawObjects, MOV EAX,[ESI+0xFC] (8B 86 FC 00 00 00): every path from 0x0055FED2 reaches it (0x0055FEE3 JZ lands here) - the object's parts are done (glanimdraw.c)" },
+    [U9SYM_FACE_LOOP_NEXT] =
+        { 0x0056297Cu, "the polygon loop's next face, MOV EAX,[ESP+0x1C] / ADD EDI,0x60 (8B 44 24 1C 83 C7 60): every face, drawn or skipped, ends here (glbackface.c)" },
     [U9SYM_SPEECH215_WORLD_GATE] =
         { 0x0054FAAEu, "U9Trigger_Execute opcode 0x30, arg1 type 215: TEST BYTE PTR [ECX+0x14],0x10 / JZ 0x00550301 (F6 41 14 10 0F 84 49 08 00 00) - a source not in the world (in a container) skips the speech (lettbook.c)" },
     [U9SYM_SPEECH215_PASS] =

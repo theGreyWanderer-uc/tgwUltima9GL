@@ -14,6 +14,10 @@ void        u9gl_beam_report(int texId, void (*out)(const char *fmt, ...));
 unsigned    u9gl_runs_with_texture(int texId, U9CasterFn fn, void *ctx);
 #define U9TEX_LAVA 43
 void        u9shadow_report_near(const float pos[3], float within, void (*line)(const char *fmt, ...));
+void        u9shadow_sun_probe_ray(const U9FrameView *v, const float P[3], const float N[3], const float l[3],
+                                   void (*out)(const char *fmt, ...));
+void        u9shadow_probe_ray(const U9FrameView *v, const float L[3], const float P[3], float range, int slot,
+                               float weight, int fixture, float bias, float slope, void (*line)(const char *fmt, ...));
 const void *u9gl_caster_vertices(int *stride);
 
 #define U9TEX_BLOB_SHADOW 6708
@@ -76,6 +80,10 @@ extern float g_shadowFixture;
 extern float g_shadowColumn;
 extern float g_shadowPart;
 extern unsigned g_shadowBuilds, g_shadowTris, g_shadowFixtures;
+extern int   g_shadowMem;
+extern int   g_shadowMemAnimated;
+extern int   g_shadowFire;
+extern unsigned g_shadowMemTris, g_shadowMemFix, g_shadowMemUs, g_shadowMemFrames;
 extern unsigned g_shadowRunsDrawn, g_shadowRunsCulled;
 
 #endif
