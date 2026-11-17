@@ -6,6 +6,7 @@
 #include "../diag/log.h"
 #include "../common/u9time.h"
 #include "glfog.h"
+#include "idlist.h"
 
 int u9glpost_running(void);
 
@@ -74,9 +75,7 @@ static void list_read(const char *s, char *g_list, size_t cap)
 
 static int in_list(const char *list, int texId)
 {
-    char key[16];
-    snprintf(key, sizeof key, ",%d,", texId);
-    return list[1] && strstr(list, key) != NULL;
+    return list[1] && u9_id_listed(list, texId);
 }
 
 static int listed_fall(int texId) { return in_list(g_fallList, texId); }
@@ -88,9 +87,7 @@ static int listed(int texId)
 
 static int listed_green(int texId)
 {
-    char key[16];
-    snprintf(key, sizeof key, ",%d,", texId);
-    return g_greenList[1] && strstr(g_greenList, key) != NULL;
+    return g_greenList[1] && u9_id_listed(g_greenList, texId);
 }
 
 void u9fog_init(void)

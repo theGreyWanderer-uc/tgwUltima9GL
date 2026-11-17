@@ -1606,6 +1606,7 @@ void  u9glpost_bloom_mask(int on);
 int   u9glpost_night_graded(int texId);
 void u9gl_wbuf_rgb(float scale);
 void u9gl_wbuf_selflit(int on);
+void u9gl_wbuf_anim(int on);
 void u9gl_wbuf_slack(int on);
 void u9gl_wbuf_ui(int on);
 void u9gl_wbuf_mark(int on);
@@ -2458,6 +2459,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
                 u9gl_wbuf_rune(rmask, tint);
             }
             if (wbuf) u9gl_wbuf_selflit(u9lava_is(g_runs[i].texId) && u9lava_glows());
+            if (wbuf) u9gl_wbuf_anim(g_runs[i].anim);
             if (wbuf) u9gl_wbuf_jitter(!interface_run(&g_runs[i]));
             if (wbuf) u9gl_wbuf_ui(!interface_mark(&g_runs[i], (float)engineW, (float)engineH) ? 0
                                    : g_runs[i].depthWrite && g_useDepth && !g_runs[i].blendAdd && !g_runs[i].deferred
@@ -2506,7 +2508,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
             glDisable(GL_ALPHA_TEST);
-            if (wbuf) { u9gl_wbuf_run(0, 0, 0.0f, 0, 0, 0.0f, 0.0f); u9gl_wbuf_alpha(1.0f); u9gl_wbuf_rgb(1.0f); u9gl_wbuf_rune(0u, NULL); u9gl_wbuf_selflit(0); u9gl_wbuf_ui(0); u9gl_wbuf_slack(0); }
+            if (wbuf) { u9gl_wbuf_run(0, 0, 0.0f, 0, 0, 0.0f, 0.0f); u9gl_wbuf_alpha(1.0f); u9gl_wbuf_rgb(1.0f); u9gl_wbuf_rune(0u, NULL); u9gl_wbuf_selflit(0); u9gl_wbuf_anim(0); u9gl_wbuf_ui(0); u9gl_wbuf_slack(0); }
             for (i = 0; i < g_runCount; i++) {
                 const GlRun *r = &g_runs[i];
                 if (!r->count || r->texId != U9TEX_WATER || !r->deferred || r->deferred == 2 || r->blendAdd)
@@ -2649,6 +2651,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
     g_bfCount = g_bfRunCount = 0;
     u9gl_anim_draw_frame_end();
     g_u9Anim = 0;
+    g_u9BackFace = 0;
     g_lastGuardTris = g_guardTris;
     g_guardTris = 0;
     material_forget();
@@ -2702,6 +2705,7 @@ void u9gl_discard_frame(void)
     g_bfCount = g_bfRunCount = 0;
     u9gl_anim_draw_frame_end();
     g_u9Anim = 0;
+    g_u9BackFace = 0;
     g_lastGuardTris = g_guardTris;
     g_guardTris = 0;
     material_forget();

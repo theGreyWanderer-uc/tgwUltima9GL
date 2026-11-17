@@ -92,8 +92,19 @@
         <TextBlock Text="Last Change:" Style="{StaticResource SectionTitleStyle}" />
         <Border Style="{StaticResource CardStyle}">
             <Grid>
-                <TextBlock Text="Nothing yet this session." Style="{StaticResource SecondaryTextStyle}" />
-                <ItemsControl ItemsSource="{Binding LastActions}" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                <TextBlock Text="Nothing yet this session.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryTextStyle}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding LastActions.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <ItemsControl ItemsSource="{Binding LastActions}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />

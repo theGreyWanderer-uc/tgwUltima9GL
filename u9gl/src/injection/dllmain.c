@@ -73,6 +73,7 @@ static int gate_check(void)
 
 #include "u9gl_version.h"
 #include "../gl/gltwosided.h"
+#include "../gl/glterrain.h"
 #include "../gl/glbackface.h"
 #include "../gl/glanimdraw.h"
 #include "../gl/glbackground.h"
@@ -106,6 +107,7 @@ static void attach(void)
     u9freeplace_install();
     u9glpost_install_hooks();
     u9gl_two_sided_install();
+    u9gl_terrain_detail_install();
     u9gl_back_face_install();
     u9gl_anim_draw_install();
     u9gl_background_install();

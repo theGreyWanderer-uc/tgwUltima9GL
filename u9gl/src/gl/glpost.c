@@ -10,6 +10,7 @@
 #include "../common/patchmgr.h"
 #include "metrics.h"
 #include "glpost.h"
+#include "idlist.h"
 #include "../common/lifecycle.h"
 #include "../fix/lightwatch.h"
 #include "glspaces.h"
@@ -32,6 +33,7 @@ void u9gl_guard_stats(unsigned *tris);
 #include "glfog.h"
 #include "glunder.h"
 #include "glaa.h"
+#include "glterrain.h"
 #include "../fix/gold.h"
 #include "regions.h"
 #include "../common/u9time.h"
@@ -252,7 +254,7 @@ static GLint  g_uSunPR, g_uSunPU, g_uSunPL;
 static GLint  g_uSun2, g_uSun2C, g_uSun2K;
 static GLint  g_uSunX, g_uSunO, g_uSunO2, g_uSunOR, g_uSunOU, g_uSunOL;
 static GLint  g_uSunOPR, g_uSunOPU, g_uSunOPL, g_uSunOC, g_uSunO2C, g_uSunOK, g_uSunO2K;
-static GLint  g_uSunFade, g_uSunBias, g_uSunSlope, g_uSunSmooth, g_uSunWalls;
+static GLint  g_uSunFade, g_uSunBias, g_uSunSlope, g_uSunSmooth, g_uSunWalls, g_uSunChar, g_uSunCharBlend;
 static unsigned g_sunFrames;
 static int    g_glowView;
 static void   night_grade(void);
@@ -494,6 +496,42 @@ static const char *const k_fragment =
     "    float ey = (u_vp.w - pq.y) * u_engine.y / u_vp.w;\n"
     "    vec4 cs = vec4((ex - u_proj.z) * wq / u_proj.x, wq, (u_proj.w - ey) * wq / u_proj.y, 1.0);\n"
     "    return vec3(dot(u_m0, cs), dot(u_m1, cs), dot(u_m2, cs));\n"
+    "}\n"
+    "uniform float u_sunChar;\n"
+    "uniform float u_sunCharBlend;\n"
+    "vec3 char_normal(vec2 uvq, vec2 pq, vec3 relq, vec3 Nq, float upp) {\n"
+    "    vec3 acc = 0.5 * Nq;\n"
+    "    float rmax = clamp(u_sunChar / max(upp, 1e-3), 1.5, 32.0);\n"
+    "    float lim = 1.5 * rmax * 0.25 * upp + 1.5;\n"
+    "    bool aR = true, aL = true, aU = true, aD = true;\n"
+    "    vec3 pR = relq, pL = relq, pU = relq, pD = relq;\n"
+    "    for (int k = 1; k <= 4; k++) {\n"
+    "        float r = rmax * float(k) * 0.25;\n"
+    "        vec2 dx = vec2(r, 0.0), dy = vec2(0.0, r);\n"
+    "        vec2 tx = vec2(r / u_surf.x, 0.0), ty = vec2(0.0, r / u_surf.y);\n"
+    "        vec3 qR = rel_at(uvq + tx, pq + dx), qL = rel_at(uvq - tx, pq - dx);\n"
+    "        vec3 qU = rel_at(uvq + ty, pq + dy), qD = rel_at(uvq - ty, pq - dy);\n"
+    "        aR = aR && texture2D(u_exact, uvq + tx).g > 0.5 && length(qR - pR) < lim;\n"
+    "        aL = aL && texture2D(u_exact, uvq - tx).g > 0.5 && length(qL - pL) < lim;\n"
+    "        aU = aU && texture2D(u_exact, uvq + ty).g > 0.5 && length(qU - pU) < lim;\n"
+    "        aD = aD && texture2D(u_exact, uvq - ty).g > 0.5 && length(qD - pD) < lim;\n"
+    "        if (aR) pR = qR;\n"
+    "        if (aL) pL = qL;\n"
+    "        if (aU) pU = qU;\n"
+    "        if (aD) pD = qD;\n"
+    "        bool okR = aR, okL = aL, okU = aU, okD = aD;\n"
+    "        if (!(okR || okL) || !(okU || okD)) break;\n"
+    "        vec3 sx = okR && okL ? qR - qL : okR ? qR - relq : relq - qL;\n"
+    "        vec3 sy = okU && okD ? qU - qD : okU ? qU - relq : relq - qD;\n"
+    "        vec3 n = cross(sx, sy);\n"
+    "        float l = length(n);\n"
+    "        if (l < 1e-6) continue;\n"
+    "        n /= l;\n"
+    "        if (dot(n, Nq) < 0.0) n = -n;\n"
+    "        if (dot(n, Nq) < 0.2) continue;\n"
+    "        acc += n;\n"
+    "    }\n"
+    "    return normalize(acc);\n"
     "}\n"
     "vec3 cam_of(vec3 X) {\n"
     "    vec3 d = X - vec3(u_m0.w, u_m1.w, u_m2.w);\n"
@@ -897,6 +935,10 @@ static const char *const k_fragment =
     "        if (dot(cy, cy) < dot(sy, sy)) sy = cy;\n"
     "    }\n"
     "    vec3 N = normalize(cross(sx, sy));\n"
+    "    vec3 Nsun = N;\n"
+    "    bool charPx = u_sunChar > 0.0 && u_haveExact != 0 && d < 1.0 && texture2D(u_exact, uv).g > 0.5;\n"
+    "    if (charPx) Nsun = char_normal(uv, p, rel, N, abs(w * u_engine.x / (u_vp.z * u_proj.x)));\n"
+    "    float charShade = -1.0;\n"
     "    bool solid = d < 1.0 && w > 16.0 && p.x >= 0.0 && p.y >= 0.0 && p.x < u_vp.z && p.y < u_vp.w;\n"
     "    if (u_night.w >= 0.0 && solid) {\n"
     "        float keep = 0.0;\n"
@@ -926,7 +968,7 @@ static const char *const k_fragment =
     "    float sunCast = 0.0;\n"
     "    bool sunFar = u_sunFade.y > u_sunFade.x && length(world - eyeP) >= u_sunFade.y;\n"
     "    if ((u_sunMode.x > 0.5 || u_sunMode.y > 0.5) && solid && !sunFar) {\n"
-    "        vec3 Ns = N;\n"
+    "        vec3 Ns = Nsun;\n"
     "        if (dot(Ns, vec3(u_m0.w, u_m1.w, u_m2.w) - world) < 0.0) Ns = -Ns;\n"
     "        vec3 Ps = world + Ns * 4.0;\n"
     "        sunV = sun_lit(Ps, Ns);\n"
@@ -938,7 +980,7 @@ static const char *const k_fragment =
     "        if (ctV < 1.0 && sunV > -1.5) sunV = sunV >= 0.0 ? min(sunV, ctV) : ctV;\n"
     "        if (u_sunMode.y > 0.5) {\n"
     "            float ndl = dot(Ns, u_sunL);\n"
-    "            bool wall = u_sunWalls != 0 && abs(Ns.z) < 0.5;\n"
+    "            bool wall = !charPx && u_sunWalls != 0 && abs(Ns.z) < 0.5;\n"
     "            float face = roomShade ? 1.0 : wall ? smoothstep(0.0, 0.25, ndl) : mix(smoothstep(0.0, 0.25, ndl), 1.0, smoothstep(24.0, 96.0, g_sunOcc));\n"
     "            float near = u_sunFade.y > u_sunFade.x\n"
     "                ? 1.0 - smoothstep(u_sunFade.x, u_sunFade.y, length(world - vec3(u_m0.w, u_m1.w, u_m2.w))) : 1.0;\n"
@@ -949,6 +991,11 @@ static const char *const k_fragment =
     "                if (!roomShade && !wall) sunCast = (1.0 - g_sunAwayLit) * smoothstep(24.0, 96.0, g_sunOcc) * near;\n"
     "            }\n"
     "            float amount = sunV >= 0.0 ? 1.0 - sunV : max(sunAway, sunCast);\n"
+    "            if (charPx && u_sunCharBlend > 0.0 && !roomShade) {\n"
+    "                float soft = smoothstep(-u_sunCharBlend * 0.33, u_sunCharBlend, -ndl) * near;\n"
+    "                amount = sunV >= 0.0 ? max(amount, soft) : max(soft, sunCast);\n"
+    "                charShade = soft;\n"
+    "            }\n"
     "            vec3 e = min(texture2D(u_glow, uv).rgb, c);\n"
     "            c = (c - e) * (1.0 - u_sunK.w * amount) + e;\n"
     "        }\n"
@@ -1041,6 +1088,8 @@ static const char *const k_fragment =
     "    if (u_sunMode.x > 0.5 && sunV > -2.5)\n"
     "        c = sunV < -1.5 ? mix(vec3(0.1, 0.25, 0.9) * (1.0 - 0.7 * sunAway), vec3(0.9, 0.1, 0.1), sunCast) : sunV < -0.5 ? c * 0.3\n"
     "          : mix(vec3(0.9, 0.1, 0.1), vec3(0.1, 0.9, 0.1), sunV);\n"
+    "    if (u_sunMode.x > 0.5 && charShade >= 0.0 && !(sunV >= 0.0 && sunV < 0.99))\n"
+    "        c = mix(vec3(0.1, 0.9, 0.1), vec3(0.05, 0.12, 0.6), charShade);\n"
     "    if (u_grid != 0 && solid) {\n"
     "        vec2 g = world.xy / 256.0;\n"
     "        vec2 f = fwidth(g);\n"
@@ -1115,6 +1164,7 @@ static const char *const k_fragment =
 #include "../telemetry/publisher.h"
 #include "../../include/u9telemetry.h"
 #include "../common/perfclock.h"
+#include "shadowcost.h"
 #define GPU_SAMPLE_MS 250u
 static int g_gpuScene = -1, g_gpuBeam = -1, g_gpuRays = -1, g_gpuBloom = -1, g_gpuAo = -1,
            g_gpuPoolShadows = -1, g_gpuSunShadows = -1, g_gpuWater = -1, g_gpuComposite = -1;
@@ -1123,7 +1173,7 @@ static uint64_t g_gpuNext;
 static void gpu_frame_begin(void)
 {
     uint64_t now = u9perf_now();
-    int sample = (u9telemetry_requested_groups() & U9TM_GROUP_BIT(U9TM_GROUP_GPU)) && now >= g_gpuNext;
+    int sample = ((u9telemetry_requested_groups() & U9TM_GROUP_BIT(U9TM_GROUP_GPU)) || g_scostOn) && now >= g_gpuNext;
     if (sample) g_gpuNext = now + u9perf_frequency() * GPU_SAMPLE_MS / 1000u;
     u9gpu_frame_begin(u9metrics_current()->frame_no, sample);
     u9gpu_begin(g_gpuScene);
@@ -1347,6 +1397,8 @@ static int make_program(void)
     g_uSunBias   = fGetUniformLocation(g_prog, "u_sunBias");
     g_uSunSlope  = fGetUniformLocation(g_prog, "u_sunSlope");
     g_uSunWalls  = fGetUniformLocation(g_prog, "u_sunWalls");
+    g_uSunChar   = fGetUniformLocation(g_prog, "u_sunChar");
+    g_uSunCharBlend = fGetUniformLocation(g_prog, "u_sunCharBlend");
     g_uSunSmooth = fGetUniformLocation(g_prog, "u_sunSmooth");
     return 1;
 }
@@ -1453,7 +1505,7 @@ static int make_frame(int w, int h)
             u9log_line("GLPOST no bloom: %d draw buffers, 4 needed", (int)maxBufs);
         }
         if (maxBufs >= 5 && fColorMaski && g_bloomSrc) {
-            g_exact = make_texture(0x822E , GL_RED, GL_FLOAT, w, h);
+            g_exact = make_texture(0x8230 , 0x8227 , GL_FLOAT, w, h);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         } else {
@@ -1498,7 +1550,7 @@ static int make_frame(int w, int h)
     }
     g_resizes++;
     u9log_line("GLPOST offscreen frame %dx%d: RGBA8 colour, 24/8 depth-stencil, RGBA8 albedo and glow%s%s (frame %u)",
-               w, h, g_bloomSrc ? ", RGBA8 bloom source" : "", g_exact ? ", R32F exact depth" : "", g_frames);
+               w, h, g_bloomSrc ? ", RGBA8 bloom source" : "", g_exact ? ", RG32F exact depth and character mark" : "", g_frames);
     if (g_sky) u9log_line("GLPOST sky copy RGBA8 (the sun rays behind the interface)");
     if (g_waterTex) u9log_line("GLPOST water mask R8 (the water reflections)");
     return 1;
@@ -1758,6 +1810,7 @@ void u9glpost_install_hooks(void)
 
 void u9glpost_init(void)
 {
+    u9scost_init();
     g_gpuScene = u9gpu_region("scene");
     g_gpuBeam = u9gpu_region("beam");
     g_gpuRays = u9gpu_region("rays");
@@ -2448,7 +2501,6 @@ static char g_fillKeep[256];
 
 static int fill_cut_here(void)
 {
-    char key[16];
     int map;
     if (g_fillCut < 0) {
         const char *s = u9cfg_str("gl_fill_lights_keep", "");
@@ -2461,8 +2513,7 @@ static int fill_cut_here(void)
         g_fillKeep[n] = 0;
     }
     if (!g_fillCut || (map = u9console_current_map()) < 0) return 0;
-    snprintf(key, sizeof key, ",%d,", map);
-    return strstr(g_fillKeep, key) == NULL;
+    return !u9_id_listed(g_fillKeep, map);
 }
 
 static int drop_fill(U9LightSnap *all, int n)
@@ -2492,9 +2543,7 @@ static void map_list(const char *s, char *out, size_t cap)
 
 static int map_listed(const char *list, int map)
 {
-    char key[16];
-    snprintf(key, sizeof key, ",%d,", map);
-    return list[1] && strstr(list, key) != NULL;
+    return list[1] && u9_id_listed(list, map);
 }
 
 int u9glpost_night_graded(int texId)
@@ -2520,7 +2569,6 @@ static int dungeon_here(int *flagged)
 
 static int boost_torches(U9LightSnap *all, int n)
 {
-    char key[16];
     float b, r;
     int k;
     if (g_torchBoost < 0) {
@@ -2540,8 +2588,7 @@ static int boost_torches(U9LightSnap *all, int n)
     for (k = 0; k < n; k++) {
         int c;
         if (all[k].type < 0 || (all[k].flags & 0x02u)) continue;
-        snprintf(key, sizeof key, ",%d,", all[k].type);
-        if (!strstr(g_torchTypes, key)) continue;
+        if (!u9_id_listed(g_torchTypes, all[k].type)) continue;
         for (c = 0; c < 3; c++) { all[k].rgb[c] *= b; all[k].baseRgb[c] *= b; }
         all[k].range *= r;
     }
@@ -3104,6 +3151,7 @@ void u9glpost_end(int surfW, int surfH)
                 n = u9fx_pillar_lights(all, n, 128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS + U9FX_PILLAR_LIGHTS,
                                        &v);
                 n = u9fx_gate_lights(all, n, 128 + LAVA_LIGHTS + U9FX_LIGHTS + U9FX_RUNE_LIGHTS + U9FX_PILLAR_LIGHTS + 1);
+                if (g_scostOn) u9scost_lights(cam, all[0].pos, (int)(sizeof all[0] / sizeof(float)), n);
                 {
                     int ax, ay, az;
                     if (g_shadowOn && u9avatar_position(&ax, &ay, &az)) {
@@ -3280,6 +3328,7 @@ void u9glpost_end(int surfW, int surfH)
                         g_sh[s].rec = rec;
                         g_sh[s].w = g_fadeMs > 0 ? step : 1.0f;
                     }
+                    uint64_t cubesT0 = u9perf_now();
                     g_shadowHeld = 0;
                     u9gpu_begin(g_gpuPoolShadows);
                     u9shadow_new_frame(&v);
@@ -3292,7 +3341,12 @@ void u9glpost_end(int surfW, int surfH)
                         {
                             const U9LightSnap *l = &all[idx[at]];
                             float reach = l->range * (g_tail && g_tailReach > 1.0f ? g_tailReach : 1.0f);
+                            uint64_t cubeT0 = u9perf_now();
+                            unsigned memBefore = g_shadowMemTris;
                             cube = u9shadow_build(&v, l->pos, reach, s, l->type != U9TYPE_FILL_LIGHT);
+                            if (g_scostOn && cube)
+                                u9scost_cube(s, l->pos, reach, l->type, g_shadowTris, g_shadowMemTris - memBefore,
+                                             u9perf_now() - cubeT0);
                         }
                         if (!cube) continue;
                         fActiveTexture(GL_TEXTURE4 + s);
@@ -3301,6 +3355,7 @@ void u9glpost_end(int surfW, int surfH)
                         lsh[at * 2 + 1] = g_sh[s].w;
                         g_shadowHeld++;
                     }
+                    if (g_scostOn) u9scost_add(U9SC_CUBES, u9perf_now() - cubesT0);
                     fActiveTexture(GL_TEXTURE0);
                     fUseProgram(g_prog);
                     fUniform4f(g_uShadowK, g_shadowBias, g_shadowSlope, g_shadowStrength, g_shadowSoft);
@@ -3344,7 +3399,11 @@ void u9glpost_end(int surfW, int surfH)
             }
             u9gpu_end(g_gpuPoolShadows);
             u9gpu_begin(g_gpuSunShadows);
-            maps = castLive ? u9shadow_build_sun(&v, castDir, &sm, &sm2) : 0;
+            {
+                uint64_t sunT0 = u9perf_now();
+                maps = castLive ? u9shadow_build_sun(&v, castDir, &sm, &sm2) : 0;
+                if (g_scostOn) u9scost_add(U9SC_SUN, u9perf_now() - sunT0);
+            }
             u9gpu_end(g_gpuSunShadows);
             if (castLive && maps > 0) {
                 on = 1;
@@ -3377,6 +3436,8 @@ void u9glpost_end(int surfW, int surfH)
                 fUniform1f(g_uSunBias, g_sunBias);
                 fUniform1i(g_uSunSlope, g_sunSlopeOcc);
                 fUniform1i(g_uSunWalls, g_sunWalls);
+                fUniform1f(g_uSunChar, g_sunChar);
+                fUniform1f(g_uSunCharBlend, g_sunChar > 0.0f ? g_sunCharBlend : 0.0f);
                 fUniform1i(g_uSunSmooth, g_sunSmooth);
                 {
                     U9SunMap om, om2;
@@ -3502,6 +3563,7 @@ void u9glpost_end(int surfW, int surfH)
     glPopAttrib();
     g_frames++;
     u9gpu_frame_end();
+    u9scost_frame_end();
 }
 
 static float night_amount(int amb[3])
@@ -3559,6 +3621,10 @@ static void night_grade(void)
 
 void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
 {
+    if (arg && !strncmp(arg, "terrain", 7) && (arg[7] == 0 || arg[7] == ' ')) {
+        u9gl_terrain_command(arg + 7, out);
+        return;
+    }
     if (arg && !strncmp(arg, "dome", 4) && (arg[4] == 0 || arg[4] == ' ')) {
         const char *v = arg + 4;
         while (*v == ' ') v++;
@@ -4079,7 +4145,35 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
             else if (!strcmp(w, "off")) g_shadowMem = 0;
             else if (!strcmp(w, "animated on")) g_shadowMemAnimated = 1;
             else if (!strcmp(w, "animated off")) g_shadowMemAnimated = 0;
-            else if (*w) { out("pool shadow memory on|off | animated on|off"); return; }
+            else if (!strcmp(w, "faces on") || !strcmp(w, "faces off")) {
+                g_lmFaces = w[7] == 'n';
+                u9log_line("GLPOST shadow memory by face: %s", g_lmFaces ? "on" : "off");
+                out("lamp memory by face %s: %s", g_lmFaces ? "ON" : "off", g_lmFaces ?
+                    "each cube face draws only the remembered triangles that can reach it" : "every face draws the lamp's whole share");
+                return;
+            }
+            else if (!strcmp(w, "grid on") || !strcmp(w, "grid off")) {
+                g_lmGrid = w[6] == 'n';
+                u9log_line("GLPOST shadow memory by place: %s", g_lmGrid ? "on" : "off");
+                out("lamp memory by place %s: %s", g_lmGrid ? "ON" : "off", g_lmGrid ?
+                    "each lamp tests only the remembered triangles near it" : "each lamp tests every remembered triangle");
+                return;
+            }
+            else if (!strcmp(w, "runbox on") || !strcmp(w, "runbox off")) {
+                g_lmRunBox = w[8] == 'n';
+                u9log_line("GLPOST shadow memory by run: %s", g_lmRunBox ? "on" : "off");
+                out("lamp memory by run %s: %s", g_lmRunBox ? "ON" : "off", g_lmRunBox ?
+                    "a lamp skips the remembered runs whose box lies beyond its reach" : "each lamp tests every remembered triangle");
+                return;
+            }
+            else if (!strcmp(w, "keep on") || !strcmp(w, "keep off")) {
+                g_lmKeep = w[6] == 'n';
+                u9log_line("GLPOST shadow memory keep: %s", g_lmKeep ? "on" : "off");
+                out("lamp choices kept %s: %s", g_lmKeep ? "ON" : "off", g_lmKeep ?
+                    "a lamp keeps its share of the memory while the memory is the same" : "every pass makes every choice again");
+                return;
+            }
+            else if (*w) { out("pool shadow memory on|off | animated on|off | faces on|off | grid on|off | runbox on|off | keep on|off"); return; }
             if (*w) u9log_line("GLPOST shadow memory: %s, animated objects %s", g_shadowMem ? "on" : "off",
                                g_shadowMemAnimated ? "kept" : "left out");
             out("the memory keeps animated objects (characters...): %s%s", g_shadowMemAnimated ? "on" : "OFF - they cast only while drawn",
@@ -4117,6 +4211,15 @@ void u9glpost_pool_command(const char *arg, void (*out)(const char *fmt, ...))
                 out("guard band %d%% of the view beyond each edge: what lies there casts shadows (sun and lamps),"
                     " never drawn; last frame %u triangles", g_guardPct, gt);
             else out("guard band off: only what is on screen casts (pool shadow guard <percent> to try, e.g. 50)");
+            return;
+        } else if (!strncmp(v, "cost", 4) && (v[4] == ' ' || !v[4])) {
+            const char *w = v + 4;
+            while (*w == ' ') w++;
+            if (!strcmp(w, "on")) g_scostOn = 1;
+            else if (!strcmp(w, "off")) g_scostOn = 0;
+            else if (*w) { out("pool shadow cost on|off"); return; }
+            if (*w) u9log_line("GLPOST shadow cost timing: %s", g_scostOn ? "on" : "off");
+            u9scost_report(out);
             return;
         } else if (!strcmp(v, "fire on") || !strcmp(v, "fire off")) {
             g_shadowFire = v[6] == 'n';

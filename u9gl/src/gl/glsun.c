@@ -10,6 +10,7 @@
 #include "glshadow.h"
 #include "glspaces.h"
 #include "../fix/gold.h"
+#include "../diag/log.h"
 
 void u9glpost_sun_probe(void (*out)(const char *fmt, ...));
 
@@ -97,6 +98,24 @@ static void shadow_command(const char *v, void (*out)(const char *fmt, ...))
         g_sunWalls = v[7] == 'n';
         out(g_sunWalls ? "sun shadow walls on: a wall turned away from the sun fully shaded just past edge-on; one facing it shaded as squarely as it faces"
                        : "sun shadow walls off: walls graded as the ground, full only 20 degrees past edge-on (before 2026-10-30)");
+    } else if (!strncmp(v, "charblend ", 10)) {
+        g_sunCharBlend = (float)atoi(v + 10) / 100.0f;
+        if (g_sunCharBlend < 0.0f) g_sunCharBlend = 0.0f;
+        if (g_sunCharBlend > 1.5f) g_sunCharBlend = 1.5f;
+        if (g_sunCharBlend > 0.0f) out("sun shadow charblend %d%%: a character's side turned from the sun darkens over that wide a ramp",
+                                       (int)(g_sunCharBlend * 100.0f + 0.5f));
+        else out("sun shadow charblend 0: characters take the ground's and walls' ramps");
+    } else if (!strcmp(v, "char off") || !strncmp(v, "char ", 5)) {
+        static float s_lastChar = 0.0f;
+        if (g_sunChar > 0.0f) s_lastChar = g_sunChar;
+        if (!strcmp(v, "char off")) g_sunChar = 0.0f;
+        else if (!strcmp(v, "char on")) g_sunChar = s_lastChar > 0.0f ? s_lastChar : 24.0f;
+        else g_sunChar = (float)atoi(v + 5);
+        if (g_sunChar < 0.0f) g_sunChar = 0.0f;
+        if (g_sunChar > 200.0f) g_sunChar = 200.0f;
+        if (g_sunChar > 0.0f) out("sun shadow char %d: on characters the facing-away shade blends across their triangles, a normal smoothed over %d units",
+                                  (int)g_sunChar, (int)g_sunChar);
+        else out("sun shadow char off: characters shaded triangle by triangle, as buildings (before 2026-11-18)");
     } else if (!strncmp(v, "step ", 5)) {
         g_sunStepMs = atoi(v + 5);
         if (g_sunStepMs < 0) g_sunStepMs = 0;
@@ -168,6 +187,17 @@ static void shadow_command(const char *v, void (*out)(const char *fmt, ...))
         g_sunKeepS = atoi(v + 5);
         if (g_sunKeepS < 1) g_sunKeepS = 1;
         out("when the memory fills, triangles unseen for %d s go first", g_sunKeepS);
+    } else if (!strcmp(v, "evict on") || !strcmp(v, "evict off")) {
+        g_sunEvict = v[7] == 'n';
+        u9log_line("GLSUN shadow memory evict: %s", g_sunEvict ? "on" : "off");
+        out(g_sunEvict ? "a full sun shadow memory drops its farthest triangles to make room for new ones"
+                       : "a full sun shadow memory turns new triangles away, as before");
+    } else if (!strncmp(v, "margin ", 7)) {
+        g_sunMemMargin = (float)atof(v + 7);
+        if (g_sunMemMargin < 0.0f) g_sunMemMargin = 0.0f;
+        u9log_line("GLSUN shadow memory margin: %.0f", (double)g_sunMemMargin);
+        out("sun shadow memory keeps triangles within %.0f of the camera (the fade %.0f plus %.0f); beyond goes at the next pass",
+            (double)(g_sunFadeTo + g_sunMemMargin), (double)g_sunFadeTo, (double)g_sunMemMargin);
     } else if (!strncmp(v, "above ", 6)) {
         g_sunAbove = (float)atof(v + 6);
         out("sun shadow memory takes triangles more than %.0f above the camera", (double)g_sunAbove);
@@ -179,7 +209,7 @@ static void shadow_command(const char *v, void (*out)(const char *fmt, ...))
         out("no sun shadow below %.1f deg", (double)g_sunMinElevation);
     } else {
         out("sun shadow on | off | view | debug | strength <percent> | range <units> | size <texels> | min <degrees> |"
-            " memory on|off|only | keep <s> | above <units> | forget | near <units> | cascades on|off | ahead <percent> |"
+            " memory on|off|only | keep <s> | evict on|off | margin <units> | above <units> | forget | near <units> | cascades on|off | ahead <percent> |"
             " fade <from> <to> | fade off | bias <units> | cull on|off | walls on|off | step <ms> | xfade <ms> | slope on|off | steady on|off | freeze | hold | smooth on|off | trace [<gl tex>] | probe | water on|off");
     }
 }

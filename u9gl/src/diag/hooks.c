@@ -12,6 +12,7 @@ int u9cfg_int(const char *key, int def);
 #include "../gl/metrics.h"
 #include "../gl/glslots.h"
 #include "../gl/glbackground.h"
+#include "../gl/shadowcost.h"
 #include "../fix/npcprobe.h"
 #include "../fix/actorwatch.h"
 #include "../fix/playerwatch.h"
@@ -343,7 +344,14 @@ void u9gl_guard_tri(const void *renderer, const U9Vertex *v0, const U9Vertex *v1
 static u32 U9CALL h_testAndDraw(U9Renderer *self, const U9Vertex *v0, const U9Vertex *v1,
                                 const U9Vertex *v2, u32 flags)
 {
-    if (v0 && v1 && v2 && u9gl_is_bound(self)) u9gl_guard_tri(self, v0, v1, v2, flags & 0xFFu);
+    if (v0 && v1 && v2 && u9gl_is_bound(self)) {
+        if (g_scostOn) {
+            uint64_t t0 = u9scost_tsc();
+            u9gl_guard_tri(self, v0, v1, v2, flags & 0xFFu);
+            g_scostGuardTsc += u9scost_tsc() - t0;
+            g_scostGuardCalls++;
+        } else u9gl_guard_tri(self, v0, v1, v2, flags & 0xFFu);
+    }
     return o_testAndDraw(self, v0, v1, v2, flags);
 }
 

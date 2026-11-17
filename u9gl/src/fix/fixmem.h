@@ -18,23 +18,37 @@
 
 static uint32_t __attribute__((unused)) rd32(uintptr_t p) { return *(const volatile uint32_t *)p; }
 
+#define U9READ_SLOTS 8
+extern int      g_u9ReadCache;
+extern unsigned g_u9ReadCalls, g_u9ReadAsked;
 static int __attribute__((unused)) readable4(uintptr_t p)
 {
-    static uintptr_t okBase, okEnd;
+    static uintptr_t okBase[U9READ_SLOTS], okEnd[U9READ_SLOTS];
     static DWORD okTick;
+    static unsigned okNext;
     MEMORY_BASIC_INFORMATION mbi;
     DWORD tick;
+    int i, n = g_u9ReadCache;
 
     if (p < 0x10000u) return 0;
+    if (n < 1) n = 1;
+    if (n > U9READ_SLOTS) n = U9READ_SLOTS;
+    g_u9ReadCalls++;
     tick = GetTickCount();
-    if (tick != okTick) { okTick = tick; okEnd = 0; }
-    if (p >= okBase && p + 4 <= okEnd) return 1;
+    if (tick != okTick) {
+        okTick = tick;
+        for (i = 0; i < U9READ_SLOTS; i++) okEnd[i] = 0;
+    }
+    for (i = 0; i < n; i++)
+        if (p >= okBase[i] && p + 4 <= okEnd[i]) return 1;
+    g_u9ReadAsked++;
     if (!VirtualQuery((void *)p, &mbi, sizeof(mbi))) return 0;
     if (mbi.State != MEM_COMMIT) return 0;
     if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
-    okBase = (uintptr_t)mbi.BaseAddress;
-    okEnd  = okBase + mbi.RegionSize;
-    return (p + 4 <= okEnd);
+    i = (int)(okNext++ % (unsigned)n);
+    okBase[i] = (uintptr_t)mbi.BaseAddress;
+    okEnd[i]  = okBase[i] + mbi.RegionSize;
+    return (p + 4 <= okEnd[i]);
 }
 
 static int __attribute__((unused)) is_actor_vtable(uintptr_t vt)

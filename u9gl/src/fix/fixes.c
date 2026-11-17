@@ -19,6 +19,7 @@
 #include "shrinewatch.h"
 #include "chasegrid.h"
 #include "breathfix.h"
+#include "diagmove.h"
 #include "lettbook.h"
 #include "gold.h"
 #include "../common/buildid.h"
@@ -2789,9 +2790,15 @@ static void f5_free_stubs(void)
     if (g_soundSrcStub) { VirtualFree(g_soundSrcStub, 0, MEM_RELEASE); g_soundSrcStub = 0; }
 }
 
+int      g_u9ReadCache = 8;
+unsigned g_u9ReadCalls, g_u9ReadAsked;
+
 void u9fix_install(void)
 {
     QueryPerformanceFrequency(&g_qpf);
+    g_u9ReadCache = u9cfg_int("fix_read_cache", 8);
+    if (g_u9ReadCache < 1) g_u9ReadCache = 1;
+    if (g_u9ReadCache > U9READ_SLOTS) g_u9ReadCache = U9READ_SLOTS;
 
     if (!u9build_is_exact()) {
         u9log_line("BUILD not recognised (%s) - no fix will be installed",
@@ -2888,6 +2895,8 @@ void u9fix_install(void)
     if (u9cfg_int("fix_breath_zones", 1)) u9breathzones_install();
     else u9log_line("I-20 breath zones fix off by config - the last zone crossed decides, as stock");
 
+    if (u9cfg_int("diagonal_move", 0)) u9diagmove_install();
+
     if (u9cfg_int("fix_lett_book", 1)) u9lettbook_install();
     else u9log_line("LETT BOOK fix off by config - the book teaches only when read on the ground, as stock");
 
@@ -2975,6 +2984,7 @@ void u9fix_report(void)
     u9shrine_report();
     u9chase_report();
     u9breathzones_report();
+    u9diagmove_report();
     u9lettbook_report();
     cost_report(&g_init);
     cost_report(&g_f3);

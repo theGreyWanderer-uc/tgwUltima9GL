@@ -564,6 +564,7 @@ static void execute(char *line)
         out("dump [seconds]        a frame dump (as Ctrl+F9) that many seconds from now, 5 by default");
         out("sample [seconds]      a CPU sample (u9sample) that many seconds from now, 5 by default; a notice when done");
         out("post [check|grid|probe|off|on|night ...]  the post pass: status, copy check, world grid, centre position, night grade");
+        out("post terrain [<units>]  how far the land keeps full detail (0 = the game's 3072); takes effect as you move");
         out("pool [on|off|replace on|off|march on|off|strength N]  the light pools");
         out("datum <n> [<value>]   read or write a quest datum (0-1023, a byte each)");
         out("gate [on|off]         open or close the Earth moongate (map 14); bare: its state");
@@ -603,6 +604,16 @@ static void execute(char *line)
         cmd_tppos(arg);
     } else if (!strcmp(cmd, "list")) {
         cmd_list(arg);
+    } else if (!strcmp(cmd, "readcache")) {
+        extern int g_u9ReadCache;
+        extern unsigned g_u9ReadCalls, g_u9ReadAsked;
+        if (arg && *arg) {
+            int n = atoi(arg);
+            g_u9ReadCache = n < 1 ? 1 : n > 8 ? 8 : n;
+            u9log_line("CONSOLE readable checks remember %d region(s) a tick", g_u9ReadCache);
+        }
+        out("readable checks remember %d region(s) a tick (readcache 1-8; 1 as before); %u checks so far, %u asked Windows",
+            g_u9ReadCache, g_u9ReadCalls, g_u9ReadAsked);
     } else if (!strcmp(cmd, "lights")) {
         u9light_command(arg, out);
     } else if (!strcmp(cmd, "sun")) {

@@ -647,6 +647,24 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x00535032u, "Sound_CreateBufferB: MOV [ESP+0x2C],0x100A0 (C7 44 24 2C A0 00 01 00), DSBUFFERDESC.dwFlags" },
     [U9SYM_SNDBUF_FLAGS_BNOTIFY] =
         { 0x0053503Cu, "Sound_CreateBufferB: MOV [ESP+0x2C],0x101A0 (C7 44 24 2C A0 01 01 00), the position-notify variant" },
+    [U9SYM_TERRAIN_DETAIL_DISTS] =
+        { 0x0074CE58u, "k_TerrainDetailDist0..2: floats 3072, 5120, 6144 (00 00 40 45 / 00 00 A0 45 / 00 00 C0 45), read only by TerrainChunk_DetailForDistance 0x0052BEF0 (glterrain.c)" },
+    [U9SYM_CMD_FORWARD] =
+        { 0x005B1AD0u, "Cmd_Forward entry, MOV ECX,[ESP+0x18] / PUSH EBX (8B 4C 24 18 53): stdcall, 8 args, RET 0x20; arg 5 the event flags, 0x20 key down" },
+    [U9SYM_CMD_BACKWARD] =
+        { 0x005B1D30u, "Cmd_Backward entry, MOV EAX,[ESP+0x18] / PUSH EBX (8B 44 24 18 53): as Cmd_Forward" },
+    [U9SYM_CMD_SIDESTEP_LEFT] =
+        { 0x005B1610u, "Cmd_SidestepLeft entry, MOV EAX,[ESP+0x18] / PUSH EBX (8B 44 24 18 53): as Cmd_Forward, the flags OR 0x8" },
+    [U9SYM_CMD_SIDESTEP_RIGHT] =
+        { 0x005B1870u, "Cmd_SidestepRight entry, MOV EAX,[ESP+0x18] / PUSH EBX (8B 44 24 18 53): as Cmd_Forward" },
+    [U9SYM_STEPDIR_CASE_AHEAD] =
+        { 0x0057FDC6u, "MoveCon_StepDir jump-table case 0, PUSH 0 / PUSH 1.0 (6A 00 68 00 00 80 3F) / PUSH 0 / LEA ECX,[EBP-0x74] / JMP 0x0057FE02" },
+    [U9SYM_STEPDIR_CASE_BACK] =
+        { 0x0057FDD4u, "MoveCon_StepDir jump-table case 1, PUSH 0 / PUSH -1.0 (6A 00 68 00 00 80 BF) / PUSH 0 / LEA ECX,[EBP-0x68] / JMP 0x0057FE02" },
+    [U9SYM_INPUT_AVATAR_TURN] =
+        { 0x00499B84u, "GameUI_InputEvent, CALL [EAX+0x90] (FF 90 90 00 00 00): MoveCon_TurnTo on the Avatar's mover, ECX = mover, (camera manager yaw, -1, 0)" },
+    [U9SYM_STEPDIR_UNIT_BUILD] =
+        { 0x0057FE02u, "MoveCon_StepDir, CALL 0x005B35B0 (E8): Vec3(x,y,z) from the three pushes, then stored at [EBP-0x58] - the cases' join" },
 };
 
 static uintptr_t RUNTIME[U9SYM_COUNT];

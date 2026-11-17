@@ -295,6 +295,14 @@
           "note": ""
         },
         {
+          "label": "6000",
+          "note": ""
+        },
+        {
+          "label": "7000",
+          "note": ""
+        },
+        {
           "label": "8000",
           "note": ""
         }
@@ -313,6 +321,10 @@
           "note": ""
         },
         {
+          "label": "4500",
+          "note": ""
+        },
+        {
           "label": "5000",
           "note": ""
         }
@@ -324,6 +336,18 @@
       "choices": [
         {
           "label": "2000 (the original)",
+          "note": ""
+        },
+        {
+          "label": "2500",
+          "note": ""
+        },
+        {
+          "label": "3000",
+          "note": ""
+        },
+        {
+          "label": "3500",
           "note": ""
         },
         {
@@ -341,6 +365,26 @@
           "note": ""
         },
         {
+          "label": "1500",
+          "note": ""
+        },
+        {
+          "label": "2000",
+          "note": ""
+        },
+        {
+          "label": "2500",
+          "note": ""
+        },
+        {
+          "label": "3000",
+          "note": ""
+        },
+        {
+          "label": "3500",
+          "note": ""
+        },
+        {
           "label": "4000",
           "note": ""
         }
@@ -348,14 +392,52 @@
     },
     {
       "title": "Model detail distance",
-      "description": "How far buildings and other models keep their full detail before the game swaps in a simpler version. 2 keeps it twice as far. Further costs drawing time.",
+      "description": "How far buildings and other models keep their full detail before the game swaps in a simpler version. Always full detail never swaps. Further costs drawing time. The land has its own setting, Land detail distance.",
       "choices": [
         {
           "label": "1 (the original)",
           "note": ""
         },
         {
-          "label": "2",
+          "label": "2 (twice the original)",
+          "note": ""
+        },
+        {
+          "label": "Always full detail",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Land detail distance",
+      "description": "How far hills and ground keep their full detail. Past it the game draws them coarse and blurred, and they sharpen as you approach; cracks showing sky can open where the two meet.",
+      "choices": [
+        {
+          "label": "3072 (the original)",
+          "note": ""
+        },
+        {
+          "label": "4096",
+          "note": ""
+        },
+        {
+          "label": "5120",
+          "note": ""
+        },
+        {
+          "label": "6144",
+          "note": ""
+        },
+        {
+          "label": "7168",
+          "note": ""
+        },
+        {
+          "label": "8192",
+          "note": ""
+        },
+        {
+          "label": "9216 (the whole view)",
           "note": ""
         }
       ]

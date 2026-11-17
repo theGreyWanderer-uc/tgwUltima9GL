@@ -9,7 +9,7 @@
 #define TOPT    3
 #define MAXSAMP 20000
 
-typedef struct { char name[64]; char path[MAX_PATH]; DWORD base, size; } Mod;
+typedef struct { char name[64]; char path[MAX_PATH]; DWORD base, size, codeLo, codeHi; } Mod;
 static Mod mods[MAXMOD];
 static int nmods;
 
@@ -22,6 +22,9 @@ static Thr thr[MAXTHR];
 static int nthr;
 
 static DWORD eips[TOPT][MAXSAMP];
+static DWORD callers[TOPT][MAXSAMP];
+#define STACKN 6
+static DWORD stacks[TOPT][MAXSAMP][STACKN];
 static int   neip[TOPT];
 static WORD  fpucw[TOPT];
 static DWORD mxcsr[TOPT];
@@ -56,6 +59,40 @@ static void where(DWORD a, char *buf, size_t n)
     int m = modidx(a);
     if (m < 0) snprintf(buf, n, "0x%08lX (no module)", (unsigned long)a);
     else snprintf(buf, n, "%s+0x%lX", mods[m].name, (unsigned long)(a - mods[m].base));
+}
+
+static int ours(DWORD a)
+{
+    int m = modidx(a);
+    if (m < 0) return 0;
+    return !lstrcmpiA(mods[m].name, "u9log.dll") || !lstrcmpiA(mods[m].name, "u9.exe") ||
+           !lstrcmpiA(mods[m].name, "u9-laa.exe");
+}
+
+static int ours_code(DWORD a)
+{
+    int m = modidx(a);
+    if (m < 0 || !ours(a)) return 0;
+    if (!mods[m].codeHi) return 1;
+    return a >= mods[m].codeLo && a < mods[m].codeHi;
+}
+
+static void code_ranges(HANDLE hp)
+{
+    int i;
+    for (i = 0; i < nmods; i++) {
+        unsigned char h[0x400];
+        SIZE_T got = 0;
+        DWORD pe, boc, soc;
+        mods[i].codeLo = mods[i].codeHi = 0;
+        if (!ReadProcessMemory(hp, (LPCVOID)(DWORD_PTR)mods[i].base, h, sizeof h, &got) || got < 0x200) continue;
+        memcpy(&pe, h + 0x3C, 4);
+        if (pe + 24 + 24 > got || memcmp(h + pe, "PE", 2)) continue;
+        memcpy(&soc, h + pe + 24 + 4, 4);
+        memcpy(&boc, h + pe + 24 + 20, 4);
+        mods[i].codeLo = mods[i].base + boc;
+        mods[i].codeHi = mods[i].base + boc + soc;
+    }
 }
 
 static int cmp_dword(const void *a, const void *b)
@@ -157,6 +194,46 @@ static void report_thread(int j, DWORD tid)
     for (x = 0; x < nm && x < 10; x++)
         P("     %5.1f%%  %s\n", 100.0 * mc[x].n / neip[j],
           mc[x].key ? mods[mc[x].key - 1].name : "(no module)");
+    {
+        static Cnt cc[MAXSAMP];
+        int nc = 0, y, outside = 0, found = 0;
+        char w2[128];
+        for (x = 0; x < neip[j]; x++) {
+            DWORD key;
+            if (ours(eips[j][x])) continue;
+            outside++;
+            if (!callers[j][x]) continue;
+            found++;
+            key = callers[j][x];
+            for (y = 0; y < nc; y++) if (cc[y].key == key) { cc[y].n++; break; }
+            if (y == nc && nc < MAXSAMP) { cc[nc].key = key; cc[nc].n = 1; nc++; }
+        }
+        qsort(cc, nc, sizeof cc[0], cmp_cnt);
+        P("     outside our DLL and the engine: %d samples, %d with a caller of ours on the stack; top callers:\n",
+          outside, found);
+        for (x = 0; x < nc && x < 25; x++) {
+            where(cc[x].key, w2, sizeof w2);
+            P("       %4d  <- %s\n", cc[x].n, w2);
+        }
+        if (g_out)
+            for (x = 0; x < nc; x++) {
+                where(cc[x].key, w2, sizeof w2);
+                fprintf(g_out, "  caller %d %s\n", cc[x].n, w2);
+            }
+    }
+    if (g_out) {
+        int y;
+        char w3[128];
+        for (x = 0; x < neip[j]; x++) {
+            where(eips[j][x], w3, sizeof w3);
+            fprintf(g_out, "  stack %s", w3);
+            for (y = 0; y < STACKN && stacks[j][x][y]; y++) {
+                where(stacks[j][x][y], w3, sizeof w3);
+                fprintf(g_out, " %s", w3);
+            }
+            fprintf(g_out, "\n");
+        }
+    }
     qsort(eips[j], neip[j], sizeof(DWORD), cmp_dword);
     for (x = 0; x < neip[j]; x++) {
         if (na && ac[na - 1].key == eips[j][x]) ac[na - 1].n++;
@@ -167,6 +244,11 @@ static void report_thread(int j, DWORD tid)
         where(ac[x].key, w, sizeof w);
         P("       %4d  %s\n", ac[x].n, w);
     }
+    if (g_out)
+        for (x = 0; x < na; x++) {
+            where(ac[x].key, w, sizeof w);
+            fprintf(g_out, "  all %d %s\n", ac[x].n, w);
+        }
 }
 
 static void sample(DWORD pid)
@@ -202,6 +284,7 @@ static void sample(DWORD pid)
     }
 
     load_modules(pid);
+    code_ranges(hp);
     open_threads(pid);
 
     Sleep(1000);
@@ -234,6 +317,18 @@ static void sample(DWORD pid)
                               (si == 0 ? (CONTEXT_FLOATING_POINT | CONTEXT_EXTENDED_REGISTERS) : 0);
             if (SuspendThread(h) == (DWORD)-1) continue;
             if (GetThreadContext(h, &cx)) {
+                DWORD cl = 0;
+                {
+                    static DWORD stk[1024];
+                    SIZE_T got = 0;
+                    unsigned k2, ns = 0;
+                    memset(stacks[j][neip[j]], 0, sizeof stacks[j][neip[j]]);
+                    if (ReadProcessMemory(hp, (LPCVOID)(uintptr_t)cx.Esp, stk, sizeof stk, &got))
+                        for (k2 = 0; k2 < got / 4 && ns < STACKN; k2++)
+                            if (ours_code(stk[k2])) stacks[j][neip[j]][ns++] = stk[k2];
+                    if (!ours(cx.Eip)) cl = stacks[j][neip[j]][0];
+                }
+                callers[j][neip[j]] = cl;
                 eips[j][neip[j]++] = cx.Eip;
                 if (si == 0) {
                     fpucw[j] = (WORD)cx.FloatSave.ControlWord;
