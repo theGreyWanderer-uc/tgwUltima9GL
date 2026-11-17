@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "metrics.h"
+#include "idlist.h"
 
 int u9cfg_int(const char *key, int def);
 
@@ -576,6 +577,31 @@ static int evict_one(void)
     return 1;
 }
 
+extern int g_u9ReadCache;
+static int region_ok(const unsigned char *a, const unsigned char **stop)
+{
+    static const unsigned char *okBase[8], *okEnd[8];
+    static DWORD okTick;
+    static unsigned okNext;
+    MEMORY_BASIC_INFORMATION mbi;
+    DWORD tick = GetTickCount();
+    int i, n = g_u9ReadCache < 1 ? 1 : g_u9ReadCache > 8 ? 8 : g_u9ReadCache;
+    if (tick != okTick) {
+        okTick = tick;
+        for (i = 0; i < 8; i++) okEnd[i] = NULL;
+    }
+    for (i = 0; i < n; i++)
+        if (okEnd[i] && a >= okBase[i] && a < okEnd[i]) { *stop = okEnd[i]; return 1; }
+    if (!VirtualQuery(a, &mbi, sizeof(mbi))) return 0;
+    if (mbi.State != MEM_COMMIT) return 0;
+    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
+    i = (int)(okNext++ % (unsigned)n);
+    okBase[i] = (const unsigned char *)mbi.BaseAddress;
+    okEnd[i]  = okBase[i] + mbi.RegionSize;
+    *stop = okEnd[i];
+    return 1;
+}
+
 static int readable_range(const void *p, unsigned n)
 {
     const unsigned char *a = (const unsigned char *)p;
@@ -583,12 +609,8 @@ static int readable_range(const void *p, unsigned n)
 
     if (!p || !n) return 0;
     while (a < end) {
-        MEMORY_BASIC_INFORMATION mbi;
         const unsigned char *stop;
-        if (!VirtualQuery(a, &mbi, sizeof(mbi))) return 0;
-        if (mbi.State != MEM_COMMIT) return 0;
-        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
-        stop = (const unsigned char *)mbi.BaseAddress + mbi.RegionSize;
+        if (!region_ok(a, &stop)) return 0;
         if (stop <= a) return 0;
         a = stop;
     }
@@ -1469,7 +1491,6 @@ int u9gl_magenta_keyed(int texId)
 {
     static char list[256];
     static int read;
-    char k[16];
     if (!read) {
         if (!u9cfg_int("fix_magenta_key", 1)) { read = 1; list[0] = list[1] = 0; return 0; }
         const char *s = u9cfg_str("gl_magenta_key_textures",
@@ -1483,8 +1504,7 @@ int u9gl_magenta_keyed(int texId)
         list[n] = 0;
     }
     if (texId < 0 || !list[1]) return 0;
-    snprintf(k, sizeof k, ",%d,", texId);
-    return strstr(list, k) != NULL;
+    return u9_id_listed(list, texId);
 }
 
 static unsigned key_magenta(unsigned fmt, const void *data, unsigned w, unsigned h,
@@ -1516,7 +1536,6 @@ static int defringe_listed(int texId)
 {
     static char list[256];
     static int read;
-    char k[16];
     if (!read) {
         const char *s = u9cfg_str("gl_defringe_textures", "2553");
         size_t i, n = 1;
@@ -1528,8 +1547,7 @@ static int defringe_listed(int texId)
         list[n] = 0;
     }
     if (texId < 0 || !list[1]) return 0;
-    snprintf(k, sizeof k, ",%d,", texId);
-    return strstr(list, k) != NULL;
+    return u9_id_listed(list, texId);
 }
 
 static int is_pinkish(const unsigned char *p)

@@ -122,6 +122,7 @@ U9LOG_SRC="
     src/gl/glbackground.c
     src/gl/metrics.c
     src/gl/gpuprof.c
+    src/gl/shadowcost.c
     src/gl/console.c
     src/gl/selfsample.c
     src/gl/npcscale.c

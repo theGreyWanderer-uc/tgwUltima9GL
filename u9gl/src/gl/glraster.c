@@ -2649,6 +2649,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
     g_bfCount = g_bfRunCount = 0;
     u9gl_anim_draw_frame_end();
     g_u9Anim = 0;
+    g_u9BackFace = 0;
     g_lastGuardTris = g_guardTris;
     g_guardTris = 0;
     material_forget();
@@ -2702,6 +2703,7 @@ void u9gl_discard_frame(void)
     g_bfCount = g_bfRunCount = 0;
     u9gl_anim_draw_frame_end();
     g_u9Anim = 0;
+    g_u9BackFace = 0;
     g_lastGuardTris = g_guardTris;
     g_guardTris = 0;
     material_forget();

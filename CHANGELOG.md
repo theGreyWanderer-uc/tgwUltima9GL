@@ -2,6 +2,15 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
+## 0.5.9 (2026-11-17)
+
+- **Faster, especially near lamps.** The lamp shadows added in 0.5.8 cost much less, and several
+  parts of U9GL that ran every frame are cheaper. On our test PC: about 6 fps more in Lord
+  British's throne room and about 8 more in Yew.
+- **The web dashboard's game feed turns off with the dashboard.** If "Enable the local web
+  dashboard" was ever ticked and later unticked, the game kept feeding it, at a cost to frame rate.
+  Play now switches the feed off whenever the dashboard is off.
+
 ## 0.5.8 (2026-11-16)
 
 - **Fill lights are off on every map.** These are invisible lights the game scatters to lift the

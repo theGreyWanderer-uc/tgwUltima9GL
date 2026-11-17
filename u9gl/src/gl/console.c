@@ -603,6 +603,16 @@ static void execute(char *line)
         cmd_tppos(arg);
     } else if (!strcmp(cmd, "list")) {
         cmd_list(arg);
+    } else if (!strcmp(cmd, "readcache")) {
+        extern int g_u9ReadCache;
+        extern unsigned g_u9ReadCalls, g_u9ReadAsked;
+        if (arg && *arg) {
+            int n = atoi(arg);
+            g_u9ReadCache = n < 1 ? 1 : n > 8 ? 8 : n;
+            u9log_line("CONSOLE readable checks remember %d region(s) a tick", g_u9ReadCache);
+        }
+        out("readable checks remember %d region(s) a tick (readcache 1-8; 1 as before); %u checks so far, %u asked Windows",
+            g_u9ReadCache, g_u9ReadCalls, g_u9ReadAsked);
     } else if (!strcmp(cmd, "lights")) {
         u9light_command(arg, out);
     } else if (!strcmp(cmd, "sun")) {

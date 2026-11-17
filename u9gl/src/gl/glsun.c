@@ -10,6 +10,7 @@
 #include "glshadow.h"
 #include "glspaces.h"
 #include "../fix/gold.h"
+#include "../diag/log.h"
 
 void u9glpost_sun_probe(void (*out)(const char *fmt, ...));
 
@@ -168,6 +169,17 @@ static void shadow_command(const char *v, void (*out)(const char *fmt, ...))
         g_sunKeepS = atoi(v + 5);
         if (g_sunKeepS < 1) g_sunKeepS = 1;
         out("when the memory fills, triangles unseen for %d s go first", g_sunKeepS);
+    } else if (!strcmp(v, "evict on") || !strcmp(v, "evict off")) {
+        g_sunEvict = v[7] == 'n';
+        u9log_line("GLSUN shadow memory evict: %s", g_sunEvict ? "on" : "off");
+        out(g_sunEvict ? "a full sun shadow memory drops its farthest triangles to make room for new ones"
+                       : "a full sun shadow memory turns new triangles away, as before");
+    } else if (!strncmp(v, "margin ", 7)) {
+        g_sunMemMargin = (float)atof(v + 7);
+        if (g_sunMemMargin < 0.0f) g_sunMemMargin = 0.0f;
+        u9log_line("GLSUN shadow memory margin: %.0f", (double)g_sunMemMargin);
+        out("sun shadow memory keeps triangles within %.0f of the camera (the fade %.0f plus %.0f); beyond goes at the next pass",
+            (double)(g_sunFadeTo + g_sunMemMargin), (double)g_sunFadeTo, (double)g_sunMemMargin);
     } else if (!strncmp(v, "above ", 6)) {
         g_sunAbove = (float)atof(v + 6);
         out("sun shadow memory takes triangles more than %.0f above the camera", (double)g_sunAbove);
@@ -179,7 +191,7 @@ static void shadow_command(const char *v, void (*out)(const char *fmt, ...))
         out("no sun shadow below %.1f deg", (double)g_sunMinElevation);
     } else {
         out("sun shadow on | off | view | debug | strength <percent> | range <units> | size <texels> | min <degrees> |"
-            " memory on|off|only | keep <s> | above <units> | forget | near <units> | cascades on|off | ahead <percent> |"
+            " memory on|off|only | keep <s> | evict on|off | margin <units> | above <units> | forget | near <units> | cascades on|off | ahead <percent> |"
             " fade <from> <to> | fade off | bias <units> | cull on|off | walls on|off | step <ms> | xfade <ms> | slope on|off | steady on|off | freeze | hold | smooth on|off | trace [<gl tex>] | probe | water on|off");
     }
 }

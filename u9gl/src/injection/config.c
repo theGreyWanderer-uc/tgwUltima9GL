@@ -91,9 +91,17 @@ static const char *current_name(const char *key)
     return key;
 }
 
+#define U9CFG_MEMO 512
+static struct { const char *ptr; int def, val; unsigned gen; char key[U9CFG_KEY]; } g_memo[U9CFG_MEMO];
+static unsigned g_memoGen = 1;
+static DWORD    g_memoTid;
+unsigned        g_cfgLookups, g_cfgRemembered;
+
 static int put(const char *key, const char *val)
 {
     unsigned i, h;
+
+    g_memoGen++;
 
     key = current_name(key);
     if (strlen(val) >= U9CFG_VAL && !g_cut++) lstrcpynA(g_firstCut, key, U9CFG_KEY);
@@ -231,6 +239,7 @@ void u9cfg_load(HINSTANCE self)
         u9log_line("CFG  WARNING table full at %u: %u more settings were NOT read, the first '%s' - they run at their defaults",
                    (unsigned)U9CFG_MAX, g_dropped, g_firstDropped);
     g_loaded = 1;
+    g_memoTid = GetCurrentThreadId();
 }
 
 static int parse(const char *v, int def)
@@ -263,6 +272,27 @@ int u9cfg_int(const char *key, int def)
         return def;
     }
 
+    if (g_memoTid && GetCurrentThreadId() == g_memoTid) {
+        unsigned slot = (unsigned)(((uintptr_t)key >> 2) ^ ((uintptr_t)key >> 11)) & (U9CFG_MEMO - 1);
+        int v = def, found = 0;
+        g_cfgLookups++;
+        if (g_memo[slot].gen == g_memoGen && g_memo[slot].ptr == key && g_memo[slot].def == def &&
+            !strcmp(g_memo[slot].key, key)) {
+            g_cfgRemembered++;
+            return g_memo[slot].val;
+        }
+        h = key_hash(key);
+        for (i = 0; i < g_count && !found; i++)
+            if (g_cfg[i].hash == h && ascii_equal_nocase(g_cfg[i].key, key)) { v = parse(g_cfg[i].val, def); found = 1; }
+        if (strlen(key) < U9CFG_KEY) {
+            g_memo[slot].ptr = key;
+            g_memo[slot].def = def;
+            g_memo[slot].val = v;
+            lstrcpynA(g_memo[slot].key, key, U9CFG_KEY);
+            g_memo[slot].gen = g_memoGen;
+        }
+        return v;
+    }
     h = key_hash(key);
     for (i = 0; i < g_count; i++)
         if (g_cfg[i].hash == h && ascii_equal_nocase(g_cfg[i].key, key))
