@@ -33,6 +33,7 @@ void u9gl_guard_stats(unsigned *tris);
 #include "glfog.h"
 #include "glunder.h"
 #include "glaa.h"
+#include "glterrain.h"
 #include "../fix/gold.h"
 #include "regions.h"
 #include "../common/u9time.h"
@@ -253,7 +254,7 @@ static GLint  g_uSunPR, g_uSunPU, g_uSunPL;
 static GLint  g_uSun2, g_uSun2C, g_uSun2K;
 static GLint  g_uSunX, g_uSunO, g_uSunO2, g_uSunOR, g_uSunOU, g_uSunOL;
 static GLint  g_uSunOPR, g_uSunOPU, g_uSunOPL, g_uSunOC, g_uSunO2C, g_uSunOK, g_uSunO2K;
-static GLint  g_uSunFade, g_uSunBias, g_uSunSlope, g_uSunSmooth, g_uSunWalls;
+static GLint  g_uSunFade, g_uSunBias, g_uSunSlope, g_uSunSmooth, g_uSunWalls, g_uSunChar, g_uSunCharBlend;
 static unsigned g_sunFrames;
 static int    g_glowView;
 static void   night_grade(void);
@@ -495,6 +496,42 @@ static const char *const k_fragment =
     "    float ey = (u_vp.w - pq.y) * u_engine.y / u_vp.w;\n"
     "    vec4 cs = vec4((ex - u_proj.z) * wq / u_proj.x, wq, (u_proj.w - ey) * wq / u_proj.y, 1.0);\n"
     "    return vec3(dot(u_m0, cs), dot(u_m1, cs), dot(u_m2, cs));\n"
+    "}\n"
+    "uniform float u_sunChar;\n"
+    "uniform float u_sunCharBlend;\n"
+    "vec3 char_normal(vec2 uvq, vec2 pq, vec3 relq, vec3 Nq, float upp) {\n"
+    "    vec3 acc = 0.5 * Nq;\n"
+    "    float rmax = clamp(u_sunChar / max(upp, 1e-3), 1.5, 32.0);\n"
+    "    float lim = 1.5 * rmax * 0.25 * upp + 1.5;\n"
+    "    bool aR = true, aL = true, aU = true, aD = true;\n"
+    "    vec3 pR = relq, pL = relq, pU = relq, pD = relq;\n"
+    "    for (int k = 1; k <= 4; k++) {\n"
+    "        float r = rmax * float(k) * 0.25;\n"
+    "        vec2 dx = vec2(r, 0.0), dy = vec2(0.0, r);\n"
+    "        vec2 tx = vec2(r / u_surf.x, 0.0), ty = vec2(0.0, r / u_surf.y);\n"
+    "        vec3 qR = rel_at(uvq + tx, pq + dx), qL = rel_at(uvq - tx, pq - dx);\n"
+    "        vec3 qU = rel_at(uvq + ty, pq + dy), qD = rel_at(uvq - ty, pq - dy);\n"
+    "        aR = aR && texture2D(u_exact, uvq + tx).g > 0.5 && length(qR - pR) < lim;\n"
+    "        aL = aL && texture2D(u_exact, uvq - tx).g > 0.5 && length(qL - pL) < lim;\n"
+    "        aU = aU && texture2D(u_exact, uvq + ty).g > 0.5 && length(qU - pU) < lim;\n"
+    "        aD = aD && texture2D(u_exact, uvq - ty).g > 0.5 && length(qD - pD) < lim;\n"
+    "        if (aR) pR = qR;\n"
+    "        if (aL) pL = qL;\n"
+    "        if (aU) pU = qU;\n"
+    "        if (aD) pD = qD;\n"
+    "        bool okR = aR, okL = aL, okU = aU, okD = aD;\n"
+    "        if (!(okR || okL) || !(okU || okD)) break;\n"
+    "        vec3 sx = okR && okL ? qR - qL : okR ? qR - relq : relq - qL;\n"
+    "        vec3 sy = okU && okD ? qU - qD : okU ? qU - relq : relq - qD;\n"
+    "        vec3 n = cross(sx, sy);\n"
+    "        float l = length(n);\n"
+    "        if (l < 1e-6) continue;\n"
+    "        n /= l;\n"
+    "        if (dot(n, Nq) < 0.0) n = -n;\n"
+    "        if (dot(n, Nq) < 0.2) continue;\n"
+    "        acc += n;\n"
+    "    }\n"
+    "    return normalize(acc);\n"
     "}\n"
     "vec3 cam_of(vec3 X) {\n"
     "    vec3 d = X - vec3(u_m0.w, u_m1.w, u_m2.w);\n"
@@ -898,6 +935,10 @@ static const char *const k_fragment =
     "        if (dot(cy, cy) < dot(sy, sy)) sy = cy;\n"
     "    }\n"
     "    vec3 N = normalize(cross(sx, sy));\n"
+    "    vec3 Nsun = N;\n"
+    "    bool charPx = u_sunChar > 0.0 && u_haveExact != 0 && d < 1.0 && texture2D(u_exact, uv).g > 0.5;\n"
+    "    if (charPx) Nsun = char_normal(uv, p, rel, N, abs(w * u_engine.x / (u_vp.z * u_proj.x)));\n"
+    "    float charShade = -1.0;\n"
     "    bool solid = d < 1.0 && w > 16.0 && p.x >= 0.0 && p.y >= 0.0 && p.x < u_vp.z && p.y < u_vp.w;\n"
     "    if (u_night.w >= 0.0 && solid) {\n"
     "        float keep = 0.0;\n"
@@ -927,7 +968,7 @@ static const char *const k_fragment =
     "    float sunCast = 0.0;\n"
     "    bool sunFar = u_sunFade.y > u_sunFade.x && length(world - eyeP) >= u_sunFade.y;\n"
     "    if ((u_sunMode.x > 0.5 || u_sunMode.y > 0.5) && solid && !sunFar) {\n"
-    "        vec3 Ns = N;\n"
+    "        vec3 Ns = Nsun;\n"
     "        if (dot(Ns, vec3(u_m0.w, u_m1.w, u_m2.w) - world) < 0.0) Ns = -Ns;\n"
     "        vec3 Ps = world + Ns * 4.0;\n"
     "        sunV = sun_lit(Ps, Ns);\n"
@@ -939,7 +980,7 @@ static const char *const k_fragment =
     "        if (ctV < 1.0 && sunV > -1.5) sunV = sunV >= 0.0 ? min(sunV, ctV) : ctV;\n"
     "        if (u_sunMode.y > 0.5) {\n"
     "            float ndl = dot(Ns, u_sunL);\n"
-    "            bool wall = u_sunWalls != 0 && abs(Ns.z) < 0.5;\n"
+    "            bool wall = !charPx && u_sunWalls != 0 && abs(Ns.z) < 0.5;\n"
     "            float face = roomShade ? 1.0 : wall ? smoothstep(0.0, 0.25, ndl) : mix(smoothstep(0.0, 0.25, ndl), 1.0, smoothstep(24.0, 96.0, g_sunOcc));\n"
     "            float near = u_sunFade.y > u_sunFade.x\n"
     "                ? 1.0 - smoothstep(u_sunFade.x, u_sunFade.y, length(world - vec3(u_m0.w, u_m1.w, u_m2.w))) : 1.0;\n"
@@ -950,6 +991,11 @@ static const char *const k_fragment =
     "                if (!roomShade && !wall) sunCast = (1.0 - g_sunAwayLit) * smoothstep(24.0, 96.0, g_sunOcc) * near;\n"
     "            }\n"
     "            float amount = sunV >= 0.0 ? 1.0 - sunV : max(sunAway, sunCast);\n"
+    "            if (charPx && u_sunCharBlend > 0.0 && !roomShade) {\n"
+    "                float soft = smoothstep(-u_sunCharBlend * 0.33, u_sunCharBlend, -ndl) * near;\n"
+    "                amount = sunV >= 0.0 ? max(amount, soft) : max(soft, sunCast);\n"
+    "                charShade = soft;\n"
+    "            }\n"
     "            vec3 e = min(texture2D(u_glow, uv).rgb, c);\n"
     "            c = (c - e) * (1.0 - u_sunK.w * amount) + e;\n"
     "        }\n"
@@ -1042,6 +1088,8 @@ static const char *const k_fragment =
     "    if (u_sunMode.x > 0.5 && sunV > -2.5)\n"
     "        c = sunV < -1.5 ? mix(vec3(0.1, 0.25, 0.9) * (1.0 - 0.7 * sunAway), vec3(0.9, 0.1, 0.1), sunCast) : sunV < -0.5 ? c * 0.3\n"
     "          : mix(vec3(0.9, 0.1, 0.1), vec3(0.1, 0.9, 0.1), sunV);\n"
+    "    if (u_sunMode.x > 0.5 && charShade >= 0.0 && !(sunV >= 0.0 && sunV < 0.99))\n"
+    "        c = mix(vec3(0.1, 0.9, 0.1), vec3(0.05, 0.12, 0.6), charShade);\n"
     "    if (u_grid != 0 && solid) {\n"
     "        vec2 g = world.xy / 256.0;\n"
     "        vec2 f = fwidth(g);\n"
@@ -1349,6 +1397,8 @@ static int make_program(void)
     g_uSunBias   = fGetUniformLocation(g_prog, "u_sunBias");
     g_uSunSlope  = fGetUniformLocation(g_prog, "u_sunSlope");
     g_uSunWalls  = fGetUniformLocation(g_prog, "u_sunWalls");
+    g_uSunChar   = fGetUniformLocation(g_prog, "u_sunChar");
+    g_uSunCharBlend = fGetUniformLocation(g_prog, "u_sunCharBlend");
     g_uSunSmooth = fGetUniformLocation(g_prog, "u_sunSmooth");
     return 1;
 }
@@ -1455,7 +1505,7 @@ static int make_frame(int w, int h)
             u9log_line("GLPOST no bloom: %d draw buffers, 4 needed", (int)maxBufs);
         }
         if (maxBufs >= 5 && fColorMaski && g_bloomSrc) {
-            g_exact = make_texture(0x822E , GL_RED, GL_FLOAT, w, h);
+            g_exact = make_texture(0x8230 , 0x8227 , GL_FLOAT, w, h);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         } else {
@@ -1500,7 +1550,7 @@ static int make_frame(int w, int h)
     }
     g_resizes++;
     u9log_line("GLPOST offscreen frame %dx%d: RGBA8 colour, 24/8 depth-stencil, RGBA8 albedo and glow%s%s (frame %u)",
-               w, h, g_bloomSrc ? ", RGBA8 bloom source" : "", g_exact ? ", R32F exact depth" : "", g_frames);
+               w, h, g_bloomSrc ? ", RGBA8 bloom source" : "", g_exact ? ", RG32F exact depth and character mark" : "", g_frames);
     if (g_sky) u9log_line("GLPOST sky copy RGBA8 (the sun rays behind the interface)");
     if (g_waterTex) u9log_line("GLPOST water mask R8 (the water reflections)");
     return 1;
@@ -3386,6 +3436,8 @@ void u9glpost_end(int surfW, int surfH)
                 fUniform1f(g_uSunBias, g_sunBias);
                 fUniform1i(g_uSunSlope, g_sunSlopeOcc);
                 fUniform1i(g_uSunWalls, g_sunWalls);
+                fUniform1f(g_uSunChar, g_sunChar);
+                fUniform1f(g_uSunCharBlend, g_sunChar > 0.0f ? g_sunCharBlend : 0.0f);
                 fUniform1i(g_uSunSmooth, g_sunSmooth);
                 {
                     U9SunMap om, om2;
@@ -3569,6 +3621,10 @@ static void night_grade(void)
 
 void u9glpost_command(const char *arg, void (*out)(const char *fmt, ...))
 {
+    if (arg && !strncmp(arg, "terrain", 7) && (arg[7] == 0 || arg[7] == ' ')) {
+        u9gl_terrain_command(arg + 7, out);
+        return;
+    }
     if (arg && !strncmp(arg, "dome", 4) && (arg[4] == 0 || arg[4] == ' ')) {
         const char *v = arg + 4;
         while (*v == ' ') v++;

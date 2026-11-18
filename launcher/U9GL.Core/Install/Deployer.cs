@@ -37,6 +37,7 @@ public enum DeployProblem
     ForeignLoader,
     ManagedSetting,
     NotInstalled,
+    KeyMapUnusable,
 }
 
 public sealed class DeployException(DeployProblem problem, string message) : Exception(message)
@@ -221,6 +222,7 @@ public sealed class Deployer
         }
 
         WriteU9glIni(manifest, [], bundleVersion, now, actions);
+        BackUpOriginalKeyMap(manifest, now, actions);
         GoldLetters.EnsureFiles(_folder, actions);
         ApplyOptionsEdits(manifest, optionsIni, installWrites, ReasonInstall, now, actions);
 
@@ -251,11 +253,15 @@ public sealed class Deployer
             PlanOptionsEdits(optionsIni, optionWrites);
         }
 
+        var keyMapPlan = PlanKeyMap(list.Where(w => w.File == SettingFile.KeyMap));
+
         var manifest = LoadManifestOrNew();
         var now = _utcNow();
         var actions = new List<string>();
         if (optionsIni != null)
             ApplyOptionsEdits(manifest, optionsIni, optionWrites, ReasonSettings, now, actions);
+        if (keyMapPlan is { } plan)
+            ApplyKeyMap(manifest, plan, now, actions);
 
         var u9glWrites = list.Where(w => w.File == SettingFile.U9glIni)
             .Select(w => new KeyValuePair<string, string>(w.Key.ToLowerInvariant(), w.Value)).ToList();
@@ -299,9 +305,12 @@ public sealed class Deployer
             }
             PlanOptionsEdits(optionsIni, reverts);
         }
+        var keyMapRevert = PlanKeyMapRevert();
 
         var now = _utcNow();
         var actions = new List<string>();
+        if (keyMapRevert is { } revert)
+            ApplyKeyMap(manifest, revert, now, actions);
 
         if (optionsIni != null && reverts.Count > 0)
             ApplyOptionsEdits(manifest, optionsIni, reverts, ReasonInstall, now, actions);
@@ -451,6 +460,63 @@ public sealed class Deployer
         Backup(manifest, _folder.DiagIni, now, actions);
         SafeFile.WriteAllBytes(_folder.DiagIni, Encoding.Latin1.GetBytes(edited));
         actions.Add($"commented out {string.Join(", ", commented.Distinct())} in u9gl\\u9gl.diag.ini, which overrode the setting");
+    }
+
+    private sealed record KeyMapPlan(string Path, string Text, bool On);
+
+    private KeyMapPlan? PlanKeyMap(IEnumerable<SettingWrite> writes)
+    {
+        var write = writes.LastOrDefault(w => string.Equals(w.Key, SettingsCatalog.WasdMovementKey, StringComparison.OrdinalIgnoreCase));
+        if (write == null) return null;
+        if (write.Value is not (KeyMap.On or KeyMap.Off))
+            throw new DeployException(DeployProblem.KeyMapUnusable, $"{write.Key} takes {KeyMap.On} or {KeyMap.Off}, not {write.Value}.");
+        string path = KeyMap.PathFor(_folder)
+            ?? throw new DeployException(DeployProblem.KeyMapUnusable,
+                "Options.ini names a key map (Current_Keymap) that is not a file in the game folder.");
+        if (!File.Exists(path))
+            throw new DeployException(DeployProblem.KeyMapUnusable, $"The key map {Path.GetFileName(path)} was not found in the game folder.");
+        try
+        {
+            string text = File.ReadAllText(path, Encoding.Latin1);
+            return new KeyMapPlan(path, KeyMap.Apply(text, write.Value == KeyMap.On), write.Value == KeyMap.On);
+        }
+        catch (KeyMapException e) { throw new DeployException(DeployProblem.KeyMapUnusable, e.Message); }
+        catch (IOException e) { throw new DeployException(DeployProblem.KeyMapUnusable, $"The key map could not be read: {e.Message}"); }
+    }
+
+    private KeyMapPlan? PlanKeyMapRevert()
+    {
+        try
+        {
+            if (KeyMap.PathFor(_folder) is not { } path || !File.Exists(path)) return null;
+            string text = File.ReadAllText(path, Encoding.Latin1);
+            if (!text.Contains(KeyMap.Marker, StringComparison.Ordinal)) return null;
+            return new KeyMapPlan(path, KeyMap.Apply(text, on: false), false);
+        }
+        catch (Exception e) when (e is KeyMapException or IOException) { return null; }
+    }
+
+    private void ApplyKeyMap(InstallManifest manifest, KeyMapPlan plan, DateTime now, List<string> actions)
+    {
+        string name = Path.GetFileName(plan.Path);
+        if (File.ReadAllText(plan.Path, Encoding.Latin1) == plan.Text)
+        {
+            actions.Add($"{name}: WASD movement already {(plan.On ? "on" : "off")}");
+            return;
+        }
+        Backup(manifest, plan.Path, now, actions);
+        SafeFile.WriteAllBytes(plan.Path, Encoding.Latin1.GetBytes(plan.Text));
+        actions.Add(plan.On
+            ? $"{name}: W A S D move and the spellbook is on E (abort_targeting, which does nothing in the game, commented out)"
+            : $"{name}: W A S D unbound and the spellbook back on S (abort_targeting back on A)");
+    }
+
+    private void BackUpOriginalKeyMap(InstallManifest manifest, DateTime now, List<string> actions)
+    {
+        if (KeyMap.PathFor(_folder) is not { } path || !File.Exists(path)) return;
+        string relative = _folder.Relative(path);
+        if (manifest.Backups.Any(b => SamePath(b.OriginalPath, relative))) return;
+        Backup(manifest, path, now, actions);
     }
 
     private void Backup(InstallManifest manifest, string path, DateTime now, List<string> actions)

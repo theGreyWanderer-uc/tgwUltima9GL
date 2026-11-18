@@ -1,6 +1,6 @@
 namespace U9GL.Core.Settings;
 
-public enum SettingFile { OptionsIni, U9glIni }
+public enum SettingFile { OptionsIni, U9glIni, KeyMap }
 
 public enum LedgerStatus { Works, Partial, Untested, Broken }
 
@@ -73,6 +73,8 @@ public static class SettingsCatalog
     private static SettingKey Game(string key) => new(SettingFile.OptionsIni, "Game", key);
     private static SettingKey Performance(string key) => new(SettingFile.OptionsIni, "Performance", key);
     private static SettingKey U9gl(string key) => new(SettingFile.U9glIni, null, key);
+
+    public const string WasdMovementKey = "wasd_movement";
 
     private static SettingChoice One(string label, string key, string value, LedgerStatus status, string note = "") =>
         new(label, new Dictionary<string, string> { [key] = value }, status, note);
@@ -262,6 +264,8 @@ public static class SettingsCatalog
                 "How far the world is drawn above ground. Further costs drawing time.",
                 [Performance("FarClippingPlaneDistance")],
                 [One("5000 (the original)", "FarClippingPlaneDistance", "5000", Works),
+                 One("6000", "FarClippingPlaneDistance", "6000", Works),
+                 One("7000", "FarClippingPlaneDistance", "7000", Works),
                  One("8000", "FarClippingPlaneDistance", "8000", Works)],
                 "8000"),
 
@@ -271,6 +275,7 @@ public static class SettingsCatalog
                 [Performance("MiddleClippingPlaneDistance")],
                 [One("3500 (the original)", "MiddleClippingPlaneDistance", "3500", Works),
                  One("4000", "MiddleClippingPlaneDistance", "4000", Works),
+                 One("4500", "MiddleClippingPlaneDistance", "4500", Works),
                  One("5000", "MiddleClippingPlaneDistance", "5000", Works)],
                 "4000"),
 
@@ -279,6 +284,9 @@ public static class SettingsCatalog
                 + "elemental planes. Further costs drawing time.",
                 [Performance("DungeonClippingPlaneDistance")],
                 [One("2000 (the original)", "DungeonClippingPlaneDistance", "2000", Works),
+                 One("2500", "DungeonClippingPlaneDistance", "2500", Works),
+                 One("3000", "DungeonClippingPlaneDistance", "3000", Works),
+                 One("3500", "DungeonClippingPlaneDistance", "3500", Works),
                  One("4000", "DungeonClippingPlaneDistance", "4000", Works)],
                 "4000"),
 
@@ -287,16 +295,36 @@ public static class SettingsCatalog
                 + "them. Further costs drawing time.",
                 [Performance("CullStartDist")],
                 [One("1000 (the original)", "CullStartDist", "1000", Works),
+                 One("1500", "CullStartDist", "1500", Works),
+                 One("2000", "CullStartDist", "2000", Works),
+                 One("2500", "CullStartDist", "2500", Works),
+                 One("3000", "CullStartDist", "3000", Works),
+                 One("3500", "CullStartDist", "3500", Works),
                  One("4000", "CullStartDist", "4000", Works)],
                 "4000"),
 
             new("model-detail-distance", SettingPage.Graphics, "Model detail distance",
                 "How far buildings and other models keep their full detail before the game swaps in a "
-                + "simpler version. 2 keeps it twice as far. Further costs drawing time.",
+                + "simpler version. Always full detail never swaps. Further costs drawing time. "
+                + "The land has its own setting, Land detail distance.",
                 [Game("LODScale")],
                 [One("1 (the original)", "LODScale", "1.0", Works),
-                 One("2", "LODScale", "2.0", Works)],
-                "2"),
+                 One("2 (twice the original)", "LODScale", "2.0", Works),
+                 One("Always full detail", "LODScale", "100", Works)],
+                "2 (twice the original)"),
+
+            new("land-detail-distance", SettingPage.Graphics, "Land detail distance",
+                "How far hills and ground keep their full detail. Past it the game draws them coarse and "
+                + "blurred, and they sharpen as you approach; cracks showing sky can open where the two meet.",
+                [U9gl("gl_terrain_detail_distance")],
+                [One("3072 (the original)", "gl_terrain_detail_distance", "0", Works),
+                 One("4096", "gl_terrain_detail_distance", "4096", Works),
+                 One("5120", "gl_terrain_detail_distance", "5120", Works),
+                 One("6144", "gl_terrain_detail_distance", "6144", Works),
+                 One("7168", "gl_terrain_detail_distance", "7168", Works),
+                 One("8192", "gl_terrain_detail_distance", "8192", Works),
+                 One("9216 (the whole view)", "gl_terrain_detail_distance", "9216", Works)],
+                "3072 (the original)"),
 
             new("post-gamma", SettingPage.Graphics, "Game brightness",
                 "Applies the game's own brightness setting to the game's window only. Ignored leaves the picture at full brightness.",
@@ -362,6 +390,14 @@ public static class SettingsCatalog
                 [One("On", "restore_halberd", "1", Works),
                  One("Off (the original)", "restore_halberd", "0", Works)],
                 "On"),
+
+            new("wasd", SettingPage.Game, "WASD movement",
+                "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held "
+                + "(W and D, say). The spellbook moves from S to E. Off puts it back. The key map is backed up first.",
+                [new(SettingFile.KeyMap, null, WasdMovementKey), U9gl("diagonal_move")],
+                [Pair("Off (the original)", WasdMovementKey, "0", "diagonal_move", "0", Works),
+                 Pair("On", WasdMovementKey, "1", "diagonal_move", "1", Works)],
+                "Off (the original)"),
 
             new("combat-run", SettingPage.Game, "Enemies in combat",
                 "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. "

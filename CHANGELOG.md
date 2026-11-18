@@ -2,6 +2,23 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
+## 0.6.0 (2026-11-18)
+
+- **Hills and ground keep their detail further away.** New "Land detail distance" on the
+  Graphics page. The game draws distant land coarse and blurred and sharpens it as you approach;
+  set this further and the land stays sharp out to the whole view. New installs start at 9216
+  (the whole view); if you are updating, pick it on the Graphics page.
+- **Models can keep full detail at any distance.** "Model detail distance" has a new
+  "Always full detail" choice.
+- **More choices for the distance settings.** The draw, building, dungeon and small-object
+  distances have new steps between the existing ones, so you can fine-tune them.
+- **WASD movement.** A new switch on the Game page: walk with W, A, S and D as well as the arrow
+  keys, and diagonally with two keys held (W and D, say) without the Avatar or the camera
+  turning. The spellbook moves from S to E. The game's key map is backed up first, and Off puts
+  it back.
+- **Softer sun shading on characters.** The side of a character turned from the sun now darkens
+  gradually across the body instead of in patches.
+
 ## 0.5.9 (2026-11-17)
 
 - **Faster, especially near lamps.** The lamp shadows added in 0.5.8 cost much less, and several

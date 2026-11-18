@@ -564,6 +564,7 @@ static void execute(char *line)
         out("dump [seconds]        a frame dump (as Ctrl+F9) that many seconds from now, 5 by default");
         out("sample [seconds]      a CPU sample (u9sample) that many seconds from now, 5 by default; a notice when done");
         out("post [check|grid|probe|off|on|night ...]  the post pass: status, copy check, world grid, centre position, night grade");
+        out("post terrain [<units>]  how far the land keeps full detail (0 = the game's 3072); takes effect as you move");
         out("pool [on|off|replace on|off|march on|off|strength N]  the light pools");
         out("datum <n> [<value>]   read or write a quest datum (0-1023, a byte each)");
         out("gate [on|off]         open or close the Earth moongate (map 14); bare: its state");

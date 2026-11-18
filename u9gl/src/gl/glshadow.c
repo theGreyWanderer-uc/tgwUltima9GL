@@ -108,6 +108,8 @@ float    g_sunFadeFrom = 2500.0f, g_sunFadeTo = 4000.0f;
 float    g_sunBias = 0.0f;
 int      g_sunSlopeOcc = 1;
 int      g_sunWalls = 1;
+float    g_sunChar = 24.0f;
+float    g_sunCharBlend = 0.6f;
 int      g_sunSteady = 1;
 #define SUN_STEADY_DEG  3.0f
 #define SUN_STEADY_AWAY 2000.0f
@@ -2321,6 +2323,12 @@ void u9shadow_init(void)
     g_sunFadeTo       = (float)u9cfg_int("gl_sun_shadow_fade_to", 4000);
     g_sunBias         = (float)u9cfg_int("gl_sun_shadow_bias", 0);
     g_sunWalls        = u9cfg_int("gl_sun_shadow_walls", 1);
+    g_sunChar         = (float)u9cfg_int("gl_sun_shadow_char_smooth", 24);
+    g_sunCharBlend    = (float)u9cfg_int("gl_sun_shadow_char_blend", 60) / 100.0f;
+    if (g_sunCharBlend < 0.0f) g_sunCharBlend = 0.0f;
+    if (g_sunCharBlend > 1.5f) g_sunCharBlend = 1.5f;
+    if (g_sunChar < 0.0f) g_sunChar = 0.0f;
+    if (g_sunChar > 200.0f) g_sunChar = 200.0f;
     g_sunCull         = u9cfg_int("gl_sun_shadow_cull", 1);
     g_sunStepMs       = u9cfg_int("gl_sun_shadow_step", 2000);
     g_sunXfadeMs      = u9cfg_int("gl_sun_shadow_xfade", 1000);

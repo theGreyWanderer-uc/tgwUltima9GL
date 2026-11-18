@@ -22,9 +22,10 @@ public static class SettingsReader
         var options = LoadOptions(folder.OptionsIni);
         var u9gl = LoadU9gl(folder);
         var diag = Effective(folder.DiagIni);
+        var keyMap = KeyMapValues(folder);
         return SettingsCatalog.All
             .Where(d => d.Page != SettingPage.Managed)
-            .Select(d => Current(d, options, u9gl) with
+            .Select(d => Current(d, options, u9gl, keyMap) with
             {
                 DiagKeys = d.Keys.Where(k => k.File == SettingFile.U9glIni && diag.ContainsKey(k.Key.ToLowerInvariant()))
                                  .Select(k => k.Key).ToList(),
@@ -32,14 +33,18 @@ public static class SettingsReader
             .ToList();
     }
 
-    public static CurrentSetting Current(SettingDefinition definition, IniDocument? options, IReadOnlyDictionary<string, string> u9gl)
+    public static CurrentSetting Current(SettingDefinition definition, IniDocument? options, IReadOnlyDictionary<string, string> u9gl,
+        IReadOnlyDictionary<string, string>? keyMap = null)
     {
         var values = new Dictionary<string, string?>();
         foreach (var key in definition.Keys)
         {
-            values[key.Key] = key.File == SettingFile.OptionsIni
-                ? SafeGet(options, key.Section ?? "", key.Key)
-                : u9gl.TryGetValue(key.Key.ToLowerInvariant(), out var value) ? value : null;
+            values[key.Key] = key.File switch
+            {
+                SettingFile.OptionsIni => SafeGet(options, key.Section ?? "", key.Key),
+                SettingFile.KeyMap => keyMap != null && keyMap.TryGetValue(key.Key, out var state) ? state : null,
+                _ => u9gl.TryGetValue(key.Key.ToLowerInvariant(), out var value) ? value : null,
+            };
         }
         var choice = definition.Choices.FirstOrDefault(c =>
             c.Values.All(p => values.TryGetValue(p.Key, out var current) && current == p.Value));
@@ -64,6 +69,19 @@ public static class SettingsReader
             catch (IOException) { }
         }
         foreach (var (key, value) in Effective(folder.DiagIni)) result[key] = value;
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, string> KeyMapValues(GameFolder folder)
+    {
+        var result = new Dictionary<string, string>();
+        try
+        {
+            if (KeyMap.PathFor(folder) is { } path && File.Exists(path) &&
+                KeyMap.State(File.ReadAllText(path, Encoding.Latin1)) is { } state)
+                result[SettingsCatalog.WasdMovementKey] = state;
+        }
+        catch (IOException) { }
         return result;
     }
 

@@ -98,6 +98,8 @@ public sealed class MainViewModel : ObservableObject
                 LargeAddress.CopyPath(Folder), LocationKind.FileInFolder),
             new("Options.ini", "The game's own settings. U9GL changes only the values you save, and Game Rasterizer at Install; Uninstall puts them back.", Folder.OptionsIni, LocationKind.TextFile),
             new(@"u9gl\u9gl.ini", "U9GL's settings: the documented defaults, then the launcher's block.", Folder.U9glIni, LocationKind.TextFile),
+            new("Default.kmp", "The game's key map. Backed up at the first Install and before a session's first change; changed only by WASD movement on the Game page. Uninstall takes the launcher's WASD lines out.",
+                KeyMap.PathFor(Folder) ?? Path.Combine(Folder.Root, KeyMap.DefaultFileName), LocationKind.TextFile),
             new(@"u9gl\install.json", "What Install placed, edited and backed up.", Folder.Manifest, LocationKind.TextFile),
             new(@"u9gl\backup\", "Copies of anything U9GL replaced or edited, one folder per session.", Folder.BackupRoot, LocationKind.Folder),
             new("launcher.log", "What this launcher did, and any errors.", _log.Path, LocationKind.TextFile),

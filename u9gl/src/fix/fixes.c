@@ -19,6 +19,7 @@
 #include "shrinewatch.h"
 #include "chasegrid.h"
 #include "breathfix.h"
+#include "diagmove.h"
 #include "lettbook.h"
 #include "gold.h"
 #include "../common/buildid.h"
@@ -2894,6 +2895,8 @@ void u9fix_install(void)
     if (u9cfg_int("fix_breath_zones", 1)) u9breathzones_install();
     else u9log_line("I-20 breath zones fix off by config - the last zone crossed decides, as stock");
 
+    if (u9cfg_int("diagonal_move", 0)) u9diagmove_install();
+
     if (u9cfg_int("fix_lett_book", 1)) u9lettbook_install();
     else u9log_line("LETT BOOK fix off by config - the book teaches only when read on the ground, as stock");
 
@@ -2981,6 +2984,7 @@ void u9fix_report(void)
     u9shrine_report();
     u9chase_report();
     u9breathzones_report();
+    u9diagmove_report();
     u9lettbook_report();
     cost_report(&g_init);
     cost_report(&g_f3);

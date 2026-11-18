@@ -50,11 +50,11 @@ static int    g_tried;
 static GLuint g_prog;
 static GLint  g_uTex, g_uTextured, g_uAlphaTest, g_uAlphaRef, g_uFog,
               g_uZRef, g_uZFar, g_uLightable, g_uGlow, g_uBloom, g_uFade, g_uLodBias, g_uAlphaScale,
-              g_uRgbScale, g_uSelfLit, g_uUi, g_uMark,
+              g_uRgbScale, g_uSelfLit, g_uAnim, g_uUi, g_uMark,
               g_uDepthGlide, g_uSlack, g_uRune, g_uRuneTex, g_uRuneTint;
 static int    g_lastTextured = -1, g_lastAlphaTest = -1, g_lastLightable = -1, g_lastGlow = -1;
 static float  g_lastBloom = -1.0f, g_lastAlphaScale = -1.0f, g_lastRgbScale = -1.0f;
-static int    g_lastSelfLit = -1, g_lastUi = -1, g_lastSlack = -1;
+static int    g_lastSelfLit = -1, g_lastUi = -1, g_lastSlack = -1, g_lastAnim = -1;
 static float  g_lastFade = -1.0f, g_lastLodBias = -1.0f;
 static int    g_lastRune = -1;
 static float  g_lastAlphaRef = -1.0f;
@@ -93,6 +93,7 @@ static const char *const k_fragment =
     "uniform float u_alphaScale;\n"
     "uniform float u_rgbScale;\n"
     "uniform int   u_selfLit;\n"
+    "uniform int   u_anim;\n"
     "uniform int   u_ui;\n"
     "uniform int   u_mark;\n"
     "uniform float u_fade;\n"
@@ -136,7 +137,7 @@ static const char *const k_fragment =
     "    float ua = step(0.1, c.a);\n"
     "    gl_FragData[5] = (u_lightable != 0 && gl_FragDepth < 1.0) ? vec4(0.0, 0.0, 0.0, c.a) : c;\n"
     "    gl_FragData[4] = (u_ui != 0) ? vec4(-1.0e6 * float(u_ui) * ua, 0.0, 0.0, ua)\n"
-    "                   : vec4(wx, 0.0, 0.0, 1.0);\n"
+    "                   : vec4(wx, float(u_anim), 0.0, 1.0);\n"
     "    if (u_mark == 1) gl_FragData[0] = vec4(1.0);\n"
     "    else if (u_mark == 2) gl_FragData[0] = vec4(0.0, 0.0, 0.0, c.a);\n"
     "}\n";
@@ -235,6 +236,7 @@ static void build(void)
     g_uAlphaScale = fGetUniformLocation(prog, "u_alphaScale");
     g_uRgbScale   = fGetUniformLocation(prog, "u_rgbScale");
     g_uSelfLit    = fGetUniformLocation(prog, "u_selfLit");
+    g_uAnim       = fGetUniformLocation(prog, "u_anim");
     g_uUi         = fGetUniformLocation(prog, "u_ui");
     g_uMark       = fGetUniformLocation(prog, "u_mark");
     g_uFade      = fGetUniformLocation(prog, "u_fade");
@@ -264,6 +266,8 @@ int u9gl_wbuf_begin(float zRef, float zFar, int fog)
     g_lastRgbScale = 1.0f;
     fUniform1i(g_uSelfLit, 0);
     g_lastSelfLit = 0;
+    fUniform1i(g_uAnim, 0);
+    g_lastAnim = 0;
     fUniform1f(g_uSlack, 0.0f);
     g_lastSlack = 0;
     fUniform1i(g_uUi, 0);
@@ -345,6 +349,14 @@ void u9gl_wbuf_selflit(int on)
     if (!g_prog || on == g_lastSelfLit) return;
     fUniform1i(g_uSelfLit, on);
     g_lastSelfLit = on;
+}
+
+void u9gl_wbuf_anim(int on)
+{
+    on = on ? 1 : 0;
+    if (!g_prog || on == g_lastAnim) return;
+    fUniform1i(g_uAnim, on);
+    g_lastAnim = on;
 }
 
 void u9gl_wbuf_slack(int on)

@@ -110,6 +110,7 @@ U9LOG_SRC="
     src/fix/playerwatch.c
     src/fix/playerset.c
     src/fix/breathfix.c
+    src/fix/diagmove.c
     src/fix/lettbook.c
     src/fix/trigprobe.c
     src/fix/meshprobe.c
@@ -137,6 +138,7 @@ U9LOG_SRC="
     src/gl/glpost.c
     src/gl/glwaterzones.c
     src/gl/gltwosided.c
+    src/gl/glterrain.c
     src/gl/glbackface.c
     src/gl/glanimdraw.c
     src/gl/glspaces.c

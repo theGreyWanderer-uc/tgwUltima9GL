@@ -52,6 +52,8 @@ extern float    g_sunFadeFrom, g_sunFadeTo, g_sunBias;
 extern int      g_sunSlopeOcc;
 extern int      g_sunCull;
 extern unsigned g_sunRunsDrawn[2], g_sunRunsCulled[2];
+extern float    g_sunCharBlend;
+extern float    g_sunChar;
 extern int      g_sunWalls;
 extern int      g_sunSteady;
 extern int      g_sunFreeze;
