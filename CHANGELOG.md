@@ -1,6 +1,21 @@
 # U9GL changes
 
-What changed in each release, for players. Settings named here are in the U9GL launcher.
+## 0.6.1 (2026-11-24)
+
+Bug fixes only. Where a problem came in with a recent release, its line says which.
+
+- **Fixed: wrong textures on very wide screens.** At ultrawide resolutions such as 3440x1440,
+  water, rock and other textures could cover the ground, sky, trees and characters for a moment,
+  most often with the sea in view or in fog. U9GL ran out of room for the frame's pieces and drew
+  the rest with the last texture. It now has four times the room, and if a frame ever runs out it
+  leaves the rest out instead of drawing it wrong. The limit is as old as U9GL.
+- **Fixed: a book leaves its shadow on the wall.** Near a wall lit by lamps, opening and closing a
+  book left a large dark book shape on the wall. Came in with 0.5.8.
+- **Fixed: the poison's green breaks up over water.** Poisoned with the sea in view, part of the
+  screen lost the green tint and showed a grey patch with a stepped edge. Reflections on the water
+  now take the tint like everything else.
+- **Fixed: a dark square follows the Avatar over water.** Standing at the water's edge, a square
+  without reflection showed on the water around the Avatar. Came in with 0.5.8.
 
 ## 0.6.0 (2026-11-18)
 

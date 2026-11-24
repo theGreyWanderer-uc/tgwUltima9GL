@@ -559,6 +559,20 @@
       ]
     },
     {
+      "title": "WASD movement",
+      "description": "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held (W and D, say). The spellbook moves from S to E. Off puts it back. The key map is backed up first.",
+      "choices": [
+        {
+          "label": "Off (the original)",
+          "note": ""
+        },
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
       "title": "Enemies in combat",
       "description": "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. Enemies backing away are unchanged.",
       "choices": [
