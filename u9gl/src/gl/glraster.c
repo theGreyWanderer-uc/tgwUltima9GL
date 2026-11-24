@@ -45,7 +45,7 @@ void u9gl_source_report(int force);
 void     u9gl_texture_stats(unsigned *uploads, unsigned *failed, unsigned *cached);
 
 #define U9GL_MAX_VERTS  (64 * 1024 * 3)
-#define U9GL_MAX_RUNS   4096
+#define U9GL_MAX_RUNS   16384
 
 #define U9GL_Z_REF      1.0f
 
@@ -95,6 +95,10 @@ static unsigned g_dropped;
 
 static GlRun    g_runs[U9GL_MAX_RUNS];
 static unsigned g_runCount;
+static int      g_runsFull;
+static unsigned g_runsFullFrames;
+static int      g_runCap = -1;
+static int      g_runFold;
 static GlRun    g_bfRuns[U9GL_BF_RUNS], g_lastBfRuns[U9GL_BF_RUNS];
 static unsigned g_bfRunCount, g_lastBfRunCount, g_bfCount, g_bfDropped, g_lastBfTris;
 static unsigned g_bfPolys;
@@ -755,7 +759,24 @@ static void run_begin(void)
         run_fill(r);
         return;
     }
-    if (g_runCount >= U9GL_MAX_RUNS) return;
+    if (g_runCap < 0) {
+        int c = u9cfg_int("gl_max_runs", 0);
+        g_runFold = u9cfg_int("gl_max_runs_fold", 0) != 0;
+        g_runCap = (c <= 0 || c > U9GL_MAX_RUNS) ? U9GL_MAX_RUNS : (c < 16 ? 16 : c);
+        if (g_runCap != U9GL_MAX_RUNS || g_runFold)
+            u9log_line("GLRAST run table: %d runs (gl_max_runs), when full: %s", g_runCap,
+                       g_runFold ? "FOLD into the last run (the 0.6.0 behaviour, wrong textures)"
+                                 : "drop the frame's remaining triangles");
+    }
+    if (g_runCount >= (unsigned)g_runCap) {
+        if (!g_runsFull && g_runsFullFrames++ < 4u)
+            u9log_line("GLRAST run table full (%d runs) at frame %u: the rest of this frame's "
+                       "triangles are %s", g_runCap, u9log_frame(),
+                       g_runFold ? "folded into the last run (gl_max_runs_fold)"
+                                 : "dropped, not drawn with the last run's texture");
+        g_runsFull = 1;
+        return;
+    }
     r = &g_runs[g_runCount++];
     r->first = g_count;
     r->count = 0;
@@ -1174,6 +1195,7 @@ void u9gl_tri(const void *renderer,
             if (depth_bucket(tz) != depth_bucket(r->zMin)) run_begin();
         }
     }
+    if (g_runsFull && !g_runFold) { g_dropped++; return; }
 
     push(v0, alpha);
     push(v1, alpha);
@@ -1196,6 +1218,7 @@ void u9gl_poly(const void *renderer, unsigned count, const void *verts,
     if (!g_runCount) run_begin();
     material_set(mat);
     if (g_runCount && g_runs[g_runCount - 1].anim != g_u9Anim) run_begin();
+    if (g_runsFull && !g_runFold) { g_dropped += count - 2; return; }
 
     if (mat) {
         unsigned w = *(const unsigned *)((const char *)mat + U9_MAT_TEXW);
@@ -1483,17 +1506,71 @@ static int glare_colour(const GlRun *r)
     return r->count && c[0] >= 250 && c[1] >= 250 && c[2] >= 160 && c[2] <= 180;
 }
 
+static int screen_wash(const GlRun *r, float engineW, float engineH)
+{
+    return r->texId < 0 && r->x1 - r->x0 >= engineW * 0.9f && r->y1 - r->y0 >= engineH * 0.9f;
+}
+
+#define U9GL_WASH_MAX 2
+static float g_wash[U9GL_WASH_MAX][8];
+static int   g_washN;
+
+int u9gl_screen_washes(float (*out)[8], int max)
+{
+    int i, n = g_washN < max ? g_washN : max;
+    for (i = 0; i < n; i++) memcpy(out[i], g_wash[i], sizeof g_wash[i]);
+    return n;
+}
+
+static void wash_scan(float engineW, float engineH)
+{
+    unsigned i, k;
+    g_washN = 0;
+    for (i = 0; i < g_runCount && g_washN < U9GL_WASH_MAX; i++) {
+        const GlRun *r = &g_runs[i];
+        float *w = g_wash[g_washN];
+        float rgb[3] = { 0.0f, 0.0f, 0.0f }, aE = 0.0f, aC = -1.0f, cx = 0.5f, cy = 0.5f;
+        unsigned nE = 0;
+        if (!r->count || r->blendAdd || !screen_wash(r, engineW, engineH)) continue;
+        for (k = r->first; k < r->first + r->count; k++) {
+            const GlVert *v = &g_verts[k];
+            int atX = v->x <= engineW * 0.02f || v->x >= engineW * 0.98f;
+            int atY = v->y <= engineH * 0.02f || v->y >= engineH * 0.98f;
+            if (atX && atY) {
+                rgb[0] += v->rgba[0]; rgb[1] += v->rgba[1]; rgb[2] += v->rgba[2];
+                aE += v->rgba[3];
+                nE++;
+            } else if (aC < 0.0f) {
+                aC = v->rgba[3];
+                cx = v->x / engineW;
+                cy = v->y / engineH;
+            }
+        }
+        if (!nE) continue;
+        w[0] = rgb[0] / (255.0f * (float)nE);
+        w[1] = rgb[1] / (255.0f * (float)nE);
+        w[2] = rgb[2] / (255.0f * (float)nE);
+        w[3] = aE / (255.0f * (float)nE);
+        w[4] = aC < 0.0f ? w[3] : aC / 255.0f;
+        w[5] = cx < 0.0f ? 0.0f : cx > 1.0f ? 1.0f : cx;
+        w[6] = 1.0f - (cy < 0.0f ? 0.0f : cy > 1.0f ? 1.0f : cy);
+        w[7] = 1.0f;
+        if (w[3] > 0.0f || w[4] > 0.0f) g_washN++;
+    }
+}
+
 static int interface_mark(const GlRun *r, float engineW, float engineH)
 {
     if (r->src == 34 && r->x1 - r->x0 >= engineW * 0.9f && r->y1 - r->y0 >= engineH * 0.9f) return 0;
-    if (r->texId < 0 && r->x1 - r->x0 >= engineW * 0.9f && r->y1 - r->y0 >= engineH * 0.9f) {
+    if (screen_wash(r, engineW, engineH)) {
         static unsigned logged;
         if (logged < 4) {
             const unsigned char *c = g_verts[r->first].rgba;
             logged++;
-            u9log_line("GLWASH not marked as interface: untextured, %.0fx%.0f of %.0fx%.0f, src %d, z %.2f, rgba %u,%u,%u,%u",
+            u9log_line("GLWASH not marked as interface: untextured, %.0fx%.0f of %.0fx%.0f, src %d, z %.2f, rgba %u,%u,%u,%u,"
+                       " deferred %d, depth write %d - the water reflection carries it",
                        (double)(r->x1 - r->x0), (double)(r->y1 - r->y0), (double)engineW, (double)engineH,
-                       r->src, (double)r->zMin, c[0], c[1], c[2], c[3]);
+                       r->src, (double)r->zMin, c[0], c[1], c[2], c[3], r->deferred, r->depthWrite);
         }
         return 0;
     }
@@ -1566,6 +1643,10 @@ static void book_scan(unsigned engineW, unsigned engineH)
     if (epochs)
         for (i = 0; i < g_runCount; i++)
             if (g_runs[i].epoch < 32 && (epochs >> g_runs[i].epoch & 1u)) g_runs[i].book = 1;
+    for (i = 0; i < g_bfRunCount; i++) {
+        GlRun *r = &g_bfRuns[i];
+        r->book = epochs && r->epoch < 32 && (epochs >> r->epoch & 1u);
+    }
 }
 
 static void book_watch(void)
@@ -1697,7 +1778,8 @@ unsigned u9gl_casters(void (*fn)(void *ctx, unsigned first, unsigned count, unsi
         unsigned tex = 0, j;
         int cut;
         if (!r->count || !r->depthWrite || r->blendAdd || r->zMin <= 10.0f || r->texId == 1900 ||
-            r->texId == U9TEX_BLOB_SHADOW || r->texFmt == 0x02 || r->texId == U9TEX_WATER)
+            r->texId == U9TEX_BLOB_SHADOW || r->texFmt == 0x02 || r->texId == U9TEX_WATER ||
+            near_ui(r))
             continue;
         cut = r->alphaTest || r->chroma;
         if (cut)
@@ -1729,7 +1811,7 @@ void u9gl_all_runs(void (*fn)(void *ctx, unsigned first, unsigned count, int tex
         else if (r->texId == U9TEX_BLOB_SHADOW) why = "the blob shadow";
         else if (r->texFmt == 0x02) why = "ALPHA_8 (an effect)";
         else if (r->texId == U9TEX_WATER) why = "water";
-        else if (!back && near_ui(r)) why = "the journal";
+        else if (near_ui(r)) why = "the journal";
         fn(ctx, r->first, r->count, r->texId, back, why);
     }
 }
@@ -2319,7 +2401,8 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
         g_fadeLast[0] = g_fadeRuns; g_fadeLast[1] = g_fadeDepth; g_fadeLast[2] = g_fadeOut;
         if (g_fadeRuns) memcpy(g_fadeStLast, g_fadeSt, sizeof g_fadeSt);
         g_fadeRuns = g_fadeDepth = g_fadeOut = 0;
-        unsigned order[U9GL_MAX_RUNS], n = 0, a, ep, maxEpoch = 0;
+        static unsigned order[U9GL_MAX_RUNS];
+        unsigned n = 0, a, ep, maxEpoch = 0;
         unsigned drawn = 0;
         int noUi = u9shot_pending();
         draw_watch();
@@ -2335,6 +2418,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
         }
         capture_view(engineW, engineH, vx, vy, vw, vh, wbuf ? 2 : g_depthMode);
         book_scan(engineW, engineH);
+        wash_scan((float)engineW, (float)engineH);
         for (i = 0; i < g_runCount; i++)
             if (g_runs[i].count && g_runs[i].epoch > maxEpoch)
                 maxEpoch = g_runs[i].epoch;
@@ -2538,7 +2622,9 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
                     u9gl_wbuf_mark(2);
                     for (i = 0; i < g_runCount; i++) {
                         const GlRun *r = &g_runs[i];
-                        if (!r->count || r->deferred != 1 || r->texId == U9TEX_WATER || r->blendAdd ||
+                        if (!r->count || r->deferred != 1 || screen_wash(r, (float)engineW, (float)engineH) ||
+                            r->texId == U9TEX_WATER || r->blendAdd ||
+                            (r->texId == U9TEX_BLOB_SHADOW && u9shadow_hide_blob()) ||
                             near_ui(r) || u9fog_hides(r->texId) || u9beam_hides(r->texId)) continue;
                         u9gl_wbuf_run(r->glTex != 0, r->alphaTest || r->chroma, ref, 0, 0, 0.0f, 0.0f);
                         if (r->glTex) glBindTexture(GL_TEXTURE_2D, r->glTex);
@@ -2655,6 +2741,7 @@ void u9gl_flush_frame(unsigned engineW, unsigned engineH)
     g_lastGuardTris = g_guardTris;
     g_guardTris = 0;
     material_forget();
+    g_runsFull = 0;
     run_begin();
 }
 
@@ -2709,6 +2796,7 @@ void u9gl_discard_frame(void)
     g_lastGuardTris = g_guardTris;
     g_guardTris = 0;
     material_forget();
+    g_runsFull = 0;
     run_begin();
 }
 

@@ -21,6 +21,7 @@ void u9gl_back_face_stats(unsigned *tris, unsigned *runs, unsigned *dropped, uns
 void u9gl_sort_layers_command(const char *v, void (*out)(const char *fmt, ...));
 void u9gl_sort_effects_command(const char *v, void (*out)(const char *fmt, ...));
 void u9gl_water_cover_command(const char *v, void (*out)(const char *fmt, ...));
+int  u9gl_screen_washes(float (*out)[8], int max);
 extern int g_guardPct;
 void u9gl_guard_stats(unsigned *tris);
 #include "glbloom.h"
@@ -203,6 +204,7 @@ static GLint  g_uAo, g_uAoK;
 static GLint  g_uWater, g_uWaterK;
 static GLint  g_uRefl, g_uReflOn;
 static GLint  g_uWaterFloor;
+static GLint  g_uWash[4];
 static GLint  g_uFogK, g_uFogBox, g_uFogC, g_uFogN;
 static GLint  g_uUnderK, g_uUnderA, g_uUnderC, g_uUnderW, g_uUnderB, g_uUnderS, g_uUnderL, g_uUnderG;
 
@@ -403,6 +405,15 @@ static const char *const k_fragment =
     "uniform sampler2D u_refl;\n"
     "uniform float u_reflOn;\n"
     "uniform float u_waterFloor;\n"
+    "uniform vec4 u_wash0, u_washA0, u_wash1, u_washA1;\n"
+    "vec3 wash_one(vec3 c, vec2 q, vec4 w, vec4 a) {\n"
+    "    if (w.w < 0.5) return c;\n"
+    "    vec2 C = clamp(a.zw, vec2(0.001), vec2(0.999));\n"
+    "    vec2 lo = q / C, hi = (1.0 - q) / (1.0 - C);\n"
+    "    float lc = clamp(min(min(lo.x, lo.y), min(hi.x, hi.y)), 0.0, 1.0);\n"
+    "    return mix(c, w.rgb, clamp(mix(a.x, a.y, lc), 0.0, 1.0));\n"
+    "}\n"
+    "vec3 wash_tint(vec3 c, vec2 q) { return wash_one(wash_one(c, q, u_wash0, u_washA0), q, u_wash1, u_washA1); }\n"
     "vec2 wr_px(vec3 P, vec3 R, float t, out float fwd) {\n"
     "    vec3 d = P + R * t - vec3(u_m0.w, u_m1.w, u_m2.w);\n"
     "    vec3 q = vec3(dot(vec3(u_m0.x, u_m1.x, u_m2.x), d), dot(vec3(u_m0.y, u_m1.y, u_m2.y), d),\n"
@@ -1078,6 +1089,7 @@ static const char *const k_fragment =
     "        }\n"
     "        vec3 rc = rf.rgb;\n"
     "        if (u_night.w >= 0.0) rc = mix(rc, vec3(dot(rc, vec3(0.299, 0.587, 0.114))), u_night.w) * u_night.xyz;\n"
+    "        rc = wash_tint(rc, p / u_vp.zw);\n"
     "        if (u_waterK.w > 0.5) c = pa > 0.5 ? rc : rf.a > 0.0 ? mix(vec3(0.5, 0.0, 0.5), rc, rf.a)\n"
     "                                : rf.a < 0.0 ? mix(rc, vec3(0.6, 0.0, 0.6), 0.35) : vec3(0.15, 0.0, 0.15);\n"
     "        else c = mix(c, rc, clamp(max(fr, u_waterFloor * u_waterK.x), 0.0, 1.0) * abs(rf.a));\n"
@@ -1348,6 +1360,10 @@ static int make_program(void)
     g_uRefl      = fGetUniformLocation(g_prog, "u_refl");
     g_uReflOn    = fGetUniformLocation(g_prog, "u_reflOn");
     g_uWaterFloor = fGetUniformLocation(g_prog, "u_waterFloor");
+    g_uWash[0]   = fGetUniformLocation(g_prog, "u_wash0");
+    g_uWash[1]   = fGetUniformLocation(g_prog, "u_washA0");
+    g_uWash[2]   = fGetUniformLocation(g_prog, "u_wash1");
+    g_uWash[3]   = fGetUniformLocation(g_prog, "u_washA1");
     g_uExact     = fGetUniformLocation(g_prog, "u_exact");
     g_uHaveExact = fGetUniformLocation(g_prog, "u_haveExact");
     g_uDepthView = fGetUniformLocation(g_prog, "u_depthView");
@@ -3510,6 +3526,19 @@ void u9glpost_end(int surfW, int surfH)
                 fUniform1i(g_uRefl, 24);
                 fUniform1f(g_uReflOn, rt ? 1.0f : 0.0f);
                 fUniform1f(g_uWaterFloor, (float)(g_waterFloor < 0 ? 0 : g_waterFloor > 100 ? 100 : g_waterFloor) / 100.0f);
+            }
+            {
+                float w[2][8];
+                int n = on ? u9gl_screen_washes(w, 2) : 0, k;
+                for (k = 0; k < 2; k++) {
+                    if (k < n) {
+                        fUniform4f(g_uWash[k * 2], w[k][0], w[k][1], w[k][2], 1.0f);
+                        fUniform4f(g_uWash[k * 2 + 1], w[k][3], w[k][4], w[k][5], w[k][6]);
+                    } else {
+                        fUniform4f(g_uWash[k * 2], 0.0f, 0.0f, 0.0f, 0.0f);
+                        fUniform4f(g_uWash[k * 2 + 1], 0.0f, 0.0f, 0.5f, 0.5f);
+                    }
+                }
             }
         }
         if (g_probeWanted) {
