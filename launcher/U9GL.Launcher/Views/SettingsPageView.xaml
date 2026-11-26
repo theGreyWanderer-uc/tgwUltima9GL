@@ -5,7 +5,14 @@
         <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitleStyle}" />
         <TextBlock Text="{Binding Description}" Style="{StaticResource SecondaryTextStyle}" Margin="0,0,0,20" />
 
-        <ItemsControl ItemsSource="{Binding Settings}">
+        <ItemsControl ItemsSource="{Binding Groups}">
+        <ItemsControl.ItemTemplate>
+        <DataTemplate>
+        <StackPanel>
+        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitleStyle}" Margin="0,4,0,10"
+                   Visibility="{Binding Title, Converter={StaticResource TextToVisibility}}" />
+
+        <ItemsControl ItemsSource="{Binding Settings}" Margin="0,0,0,12">
             <ItemsControl.Style>
                 <Style TargetType="ItemsControl">
                     <Style.Triggers>
@@ -107,6 +114,10 @@
                     </Border>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </StackPanel>
+        </DataTemplate>
+        </ItemsControl.ItemTemplate>
         </ItemsControl>
     </StackPanel>
 </UserControl>

@@ -3,7 +3,24 @@
 # 1.19F is the GOG release.
 # Built 2026-09-20 from a pristine GOG install.
 # The Steam release (2026-11-06) shares every file but u9.exe, which is 1.19F signed by EA: a second u9.exe row.
-#folder	file	bytes	sha256	build
+# FW 1.19.01 is the Forgotten World team's 1.19F Patch Fix 1 (music triggers, 2010-12-27): it replaces triggers.flx
+# and leaves triggers-backup.flx, a copy of the 1.19F triggers.flx. Measured 2026-11-25 by installing it on a pristine GOG install.
+# FW 1.19G is the companion and music fix (2010-12-27), installed over FW 1.19.01: it replaces triggers.flx,
+# activity.flx, highway.dat and nonfixed.9. Measured 2026-11-25 the same way.
+# FW 1.19H (2012-08-26), installed over FW 1.19G: it replaces triggers.flx, activity.flx, highway.dat, nonfixed.9
+# and nonfixed.22. Its highway.dat is byte for byte FW 1.19G's, so that file has a row for each. Measured 2026-11-25;
+# the same hashes as the 1.19H rows measured 2026-09-20 and parked then.
+# DP 1.4 (2001-01-22) and DP 1.5 (2001-03-25) are the Dialogue Patch (fansforultima.com): it replaces text.flx,
+# TYPENAME.FLX and BOOKS-EN.FLX. 1.5 differs from 1.4 only in text.flx; the other two are the same file in both,
+# so each has a row for each. Its text.flx calls the Avatar Grandor until u9name.exe renames them, after which
+# the file matches neither row. Its zip carries two BOOKS-EN.FLX, one with Novum's Economy Patch (shop lists):
+# that one is DP and Economy both. Monster is Novum's Monster Patch, the NPC.FLX in the same zip (1.4 and 1.5
+# alike). Measured 2026-11-26 from the zips' files, not by installing them.
+# DP 1.6 (readme "ver 1.6", files 2001-09-26; u9fanpatch160.zip) differs from 1.5 only in text.flx: 390 of its 7,656
+# entries, 362 of them spacing and punctuation, 28 reworded. Its other ten files are 1.5's byte for byte, so TYPENAME.FLX
+# and both BOOKS-EN.FLX have a DP 1.6 row too, and its NPC.FLX is the Monster row. Measured 2026-11-26 from the zip.
+# A sixth column marks a row: backup is a patch's copy of an original, which says nothing about what is installed.
+#folder	file	bytes	sha256	build	kind
 .	3DfxSpl2.dll	1105408	262c70749ac24b4d3691e39767d3e01b5b4957b9b82768186e5faa58f395ceba	1.19F
 .	ddraw.dll	1671168	f045795c50eb1e5bf93853a32ca00ebe58d47b94da61842558aeecd3f755a502	1.19F
 .	dshow.dll	11308032	8494f6a45bd7015a0ddc0e9285802eae464200973069fc2b329194c40a32d295	1.19F
@@ -11,6 +28,8 @@
 .	u9.exe	4593152	83915175abaf8a65dab96fc42f1feed24a78f55dc8b28a736b61ffa83314b545	1.19F
 .	u9.exe	4603776	339a5ba8683546363ab8b95c53d3e980dfbd959afe8719b11f2666c4dbd0e152	1.19F
 static	activity.flx	30151	cbaf356952b306a5552f4a3a4cafce5866ad3d84e36d5702ceb4a2ff843f33c9	1.19F
+static	activity.flx	29825	088b1a2e093b2ddf445b61ae0f2757f8817224105936d3d5b38b9be15d0d6a17	FW 1.19G
+static	activity.flx	29522	1ecc2215e047b96c157e48e9a527e2273d87248a836753801683b4dad257c364	FW 1.19H
 static	anim.flx	58731040	8fdc2cc8b8b999ce53687891fadb7e8eda427e8ed8f03cec7b77a515fceea972	1.19F
 static	ankh.pal	1024	c627f9865aa5c121340debb8c29ee99cd8439b139b69ff407834f3682f4e2054	1.19F
 static	areas.flx	38702	34fab592ae1aa2fb007e359ff13f45c20f14cd7f1ce53d8a98e26b73214c0e69	1.19F
@@ -18,6 +37,13 @@ static	bitmap16.flx	320877694	3ec4ece8540c64ac7717d431267d2ab85a8612ccf119b78c36
 static	bitmapC.flx	127853218	fc968e348918239ac4a0a8d1694bcf9e6f6b58f3ddcbe8bc7e2d2ae7084d6ad2	1.19F
 static	bitmapsh.flx	179750129	0f093f8f9ca6953e7858338bd2f56e224cb9fb4284701be358e6f48a234974bc	1.19F
 static	BOOKS-EN.FLX	221316	a0653ef3608537575e707faa56aca6f24efc2eddaab554d49279d6c1c1a8858b	1.19F
+static	BOOKS-EN.FLX	234082	3f79be4f6365d51d5f928eaf7fc06d5325949aea9ad315d6c9ed22fb3dc02762	DP 1.4
+static	BOOKS-EN.FLX	234082	3f79be4f6365d51d5f928eaf7fc06d5325949aea9ad315d6c9ed22fb3dc02762	DP 1.5
+static	BOOKS-EN.FLX	234082	3f79be4f6365d51d5f928eaf7fc06d5325949aea9ad315d6c9ed22fb3dc02762	DP 1.6
+static	BOOKS-EN.FLX	247652	172a0a94bfbde41c311e21816437d68d3b535cdcb029d510e1626f439b5b1862	DP 1.4
+static	BOOKS-EN.FLX	247652	172a0a94bfbde41c311e21816437d68d3b535cdcb029d510e1626f439b5b1862	DP 1.5
+static	BOOKS-EN.FLX	247652	172a0a94bfbde41c311e21816437d68d3b535cdcb029d510e1626f439b5b1862	DP 1.6
+static	BOOKS-EN.FLX	247652	172a0a94bfbde41c311e21816437d68d3b535cdcb029d510e1626f439b5b1862	Economy
 static	dimension.dat	192000	584aaafc1cd6432862828d518c7d89c0f03c56510074988348bfb6169a8a705b	1.19F
 static	fixed.0	16432	9a47829396408d943f69a1ada2c37d1e1cbf3fd56c801ef740771857cf8601f2	1.19F
 static	fixed.10	82976	ef51b899b83278c87f1f1f45f5bf3d2eb41d38f9a48a5cf489b1b2dbf5ff5ba7	1.19F
@@ -184,6 +210,8 @@ static	fixed.90	32864	ce7cd3d862c71d888afb3a94797e4f4687e49d11fd98f93976c9405a7d
 static	fixed.98	180512	4bcb3bbc0b2aa05dcb1b746383873788ce5ddfec50001542bc5d25c7c45bfa30	1.19F
 static	fixed.99	33056	f1813e3938de50735ded1ba16b1ce19c717a032d329fbfee63faf1862a142623	1.19F
 static	highway.dat	12404	0117bf44d125cb74e6be284ae1a7ffe3a706ea63666b9edaff0104502761e5e3	1.19F
+static	highway.dat	12428	0a70f8c44520666c5df97c46f57d64b1818d6ffd192d000f8fffa14e06607ad4	FW 1.19G
+static	highway.dat	12428	0a70f8c44520666c5df97c46f57d64b1818d6ffd192d000f8fffa14e06607ad4	FW 1.19H
 static	Mbrk.br	15974	6ed8908e484fad5e978b2bdfd838eadc3a2593a02df983fd2b80032900e9796c	1.19F
 static	Mbrk.fn	14544	5684432ab0c8ca844be97162b5ed0cc9fb4ec32a9d9d531faae8a0670917512c	1.19F
 static	Mbrk.ns	14724	c72001063487ac7962d5c03d05807b0242ca3c54ba8ebd1575c78172f604de2d	1.19F
@@ -372,6 +400,9 @@ static	terrain.98	263832	0f31fcca22dcea92ee170ea407a48f6ec73848900bca694fe3bf40d
 static	terrain.99	263832	8a906efdd9545da2e723b37707d59caeadd4160a52a4496b112cf315161eea5f	1.19F
 static	text.dat	122472	821e279ad71482ed31b0b4429e6a7739dcd1259c8d890189e37cac716f6bf8ce	1.19F
 static	text.flx	1200660	378d0bf949a832ea564546159a7a2596d9d5a2512d7ace7441e52550b33e9fa0	1.19F
+static	text.flx	1224772	29c704d12a0ad6003c44b1b861086b832a16889de4e437b0c02914aa7df94ac3	DP 1.4
+static	text.flx	1226412	ebef690da0597e8fd8d162c8397f0cd42a5e8a79e03015378f5db515682b7b3e	DP 1.5
+static	text.flx	1227944	e435cc42110157e0d89a9be188e2d6dfa26d764a30b5b3d0995764a21d1450e4	DP 1.6
 static	texture16.14	715504	06db810eac2d75b911a6661b7e7a785a4d9c227861797760616956b8fc249bb4	1.19F
 static	texture16.9	28706780	446291d0dc38a3c92f430f09efef350f94a004102b4261079da7725a63adf136	1.19F
 static	Texture8.14	371440	a0309d1ee198c3e70bda568a58dc34ca71272d6f1a5749069e682f30434698b2	1.19F
@@ -382,7 +413,14 @@ static	Tnbrk.ns	134390	9c805eb7ea48ddd5aedb3df05b0909ef5dd250b03b7be2283aa3c7c30
 static	Tnbrk.vl	134185	aee95a5ce2dbc293fa1522377854e6b5a8f87884e9500b83f5f07f3bf1f65790	1.19F
 static	treedat.flx	37544	e462f75cc25c83833aa5ab1af97676118348ab987c6823eed8571b48862f7ce6	1.19F
 static	TRIGGERS.FLX	242818	76d5d988acac332287c2c5a51353e571de979e6bd9189365cfc92542fd55b352	1.19F
+static	TRIGGERS.FLX	242356	c10ddd9f6cc7a5e1f9189a5e90484e097c53f19ef9bf21e59ed33b8909b0d9b5	FW 1.19.01
+static	TRIGGERS.FLX	242416	d9e7d7a86c43ab3c88249e7efcb17d1030dd3ceb913a5328f03ff27db4f90922	FW 1.19G
+static	TRIGGERS.FLX	242476	be1245019c44643b4baae6e8838898ac094fa0d095b1d38a7c95fb2cbbf9f46e	FW 1.19H
+static	triggers-backup.flx	242818	76d5d988acac332287c2c5a51353e571de979e6bd9189365cfc92542fd55b352	FW 1.19.01	backup
 static	TYPENAME.FLX	134200	26c9042d2e8f0f55559c84c22113ae62348ed0694375ad02b4fe65fea9e3f4ca	1.19F
+static	TYPENAME.FLX	134200	af7d9e8bbe907fa5bdc195f52caf41b7c34e5e443f95d48abecbf962796b48d9	DP 1.4
+static	TYPENAME.FLX	134200	af7d9e8bbe907fa5bdc195f52caf41b7c34e5e443f95d48abecbf962796b48d9	DP 1.5
+static	TYPENAME.FLX	134200	af7d9e8bbe907fa5bdc195f52caf41b7c34e5e443f95d48abecbf962796b48d9	DP 1.6
 static	TYPES.DAT	131080	30fb9ad01dbc7f1c6aaf2fbf5d6bb995aeb9d78c3982d313607896f05b481944	1.19F
 static	yiqccube.dat	29418	5c6ba053e8d385f2a7f14484de8d9cf40ae0b0e8d36e3d8ad67060d2f0b3e4b5	1.19F
 sound	music.flx	68447502	1bfd2affa6aa6208b3c9024585d2382106b31651b3f17a83c8558e575017a5c9	1.19F
@@ -485,6 +523,7 @@ runtime	nonfixed.214	16484	94987d297ed82aba038a5f13745bfdc6994e544ec44db2a3fd497
 runtime	nonfixed.215	16484	afd01892d7171e6bc6e253791bf7c380520278a336b2dfea6d25867cdef10c62	1.19F
 runtime	nonfixed.216	16484	5a534aff8e4c2076b3ab445b35af3a2bbd9a671373bc5205de7c80c4a18a348d	1.19F
 runtime	NONFIXED.22	32820	27bd34927fa3c9f6c997d792c6cfd193a8e476a5403385aa61359e00f0338d8c	1.19F
+runtime	NONFIXED.22	32820	2e0dd86ca4a7b3cc644bae6c105c4b64b1edf276e09a5a6b2145592e7386baaa	FW 1.19H
 runtime	nonfixed.227	32868	bde9c05c201673772fa6958efc592c23f8b28a164863b3534a9f8e778b38b1a7	1.19F
 runtime	nonfixed.23	66596	ffcd5aa286cfe935818eabe6e9ef3d34cba2721b58160d227fa42ef41b3415ec	1.19F
 runtime	nonfixed.230	1511460	bb2b73ea17870e59562548da215beffd29d9d5af40c9ce01be060c5dcb397df5	1.19F
@@ -553,10 +592,13 @@ runtime	nonfixed.86	16436	3d9ef461c6e35ab03940531fc74702c36c5809ac46bc92c7568d77
 runtime	nonfixed.87	16436	a8cec92097a8052cbe00ea4add571aafe91018f00d94fd9c9480705eb85dd31f	1.19F
 runtime	NONFIXED.89	32868	33fa02136cf9e8764d3dc689a8bd0ab9a9c282554973f9ee1771cc1c43a8ec72	1.19F
 runtime	NONFIXED.9	1740836	124df5a1798fb587a42e455201552d2c93b6e1f304e72b3fbc538c7479acf55a	1.19F
+runtime	NONFIXED.9	1773604	9eae04ab00f6de621fd8b7e7fe11ba4268c2696e27013ed49d3a7be88d364f9f	FW 1.19G
+runtime	NONFIXED.9	1773604	8955bb8be66e4bc35a919fe45dfbfff61f16c713eb7eded2d22e4858f0953b28	FW 1.19H
 runtime	nonfixed.90	49252	471136d528708543c308950d831101da74046d0caf9cc16b2a4ae06e55b2a1e2	1.19F
 runtime	nonfixed.98	131364	e40990e617526961956ef8626b692456f6c24424e382097dc3bdf8abb2e95043	1.19F
 runtime	nonfixed.99	49444	d9f4227a42933cf9cb5fa4c8837afd96d097eedd552230a846275d314e50ccf5	1.19F
 runtime	NPC.FLX	114176	fa5637adfae94d7148e2434e99c7bad48ef6029884fcd48c8e7134fab1274a5a	1.19F
+runtime	NPC.FLX	114176	68e37907e24aedcab549aff5108e694edda77d7a9199c66eb709d7974c2ba08f	Monster
 Movies	ambush.dat	23482372	429575346f661a2506f5b54750cc29cc28139fbbaebdf1da04c9bb3f32876c0c	1.19F
 Movies	armageddon.dat	11233284	9425b07d8d25b4d40816dba9ec5735fe7307c3c8a60441b7e48fc033c90b6f39	1.19F
 Movies	column.dat	40628228	159bbb5b4baf2a23bcbbb624fa1529d68195ede9fa7995afe86f1d351734d9f1	1.19F

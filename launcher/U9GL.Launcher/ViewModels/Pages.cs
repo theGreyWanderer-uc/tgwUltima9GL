@@ -4,6 +4,16 @@ public abstract class PageViewModel(MainViewModel main, string title) : Observab
 {
     public MainViewModel Main { get; } = main;
     public string Title { get; } = title;
+
+    public virtual bool ShowCaution => false;
+
+    public virtual string AttentionText => "";
+
+    protected void AttentionChanged()
+    {
+        OnPropertyChanged(nameof(ShowCaution));
+        OnPropertyChanged(nameof(AttentionText));
+    }
 }
 
 public sealed class DashboardPage(MainViewModel main) : PageViewModel(main, "Dashboard");
@@ -15,6 +25,18 @@ public sealed class SettingsPage(MainViewModel main, string title, string descri
     : PageViewModel(main, title)
 {
     public string Description { get; } = description;
+    public IReadOnlyList<SettingViewModel> Settings { get; } = settings;
+    public bool TwoColumns { get; } = twoColumns;
+
+    public IReadOnlyList<SettingGroup> Groups { get; } =
+        settings.GroupBy(s => s.Definition.Group ?? "")
+                .Select(g => new SettingGroup(g.Key, g.ToList(), twoColumns))
+                .ToList();
+}
+
+public sealed class SettingGroup(string title, IReadOnlyList<SettingViewModel> settings, bool twoColumns)
+{
+    public string Title { get; } = title;
     public IReadOnlyList<SettingViewModel> Settings { get; } = settings;
     public bool TwoColumns { get; } = twoColumns;
 }

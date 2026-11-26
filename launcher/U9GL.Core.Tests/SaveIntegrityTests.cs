@@ -416,7 +416,7 @@ public sealed class SaveIntegrityTests
         StringAssert.Contains(scan.SelectorError!, "missing");
     }
 
-    private static byte[] StartDat(int slot) => [.. "U9.008"u8, .. BitConverter.GetBytes(slot)];
+    internal static byte[] StartDat(int slot) => [.. "U9.008"u8, .. BitConverter.GetBytes(slot)];
 
     private static byte[] Nonfixed()
     {
@@ -428,7 +428,7 @@ public sealed class SaveIntegrityTests
         return data;
     }
 
-    private static byte[] Fixed(int? liveSlot = null)
+    internal static byte[] Fixed(int? liveSlot = null)
     {
         int payload = liveSlot != null ? 4096 : 0;
         byte[] data = new byte[36 + payload];
@@ -447,7 +447,7 @@ public sealed class SaveIntegrityTests
         return data;
     }
 
-    private static byte[] Processes(int? fixedOffset = null, int? nonfixedOffset = null)
+    internal static byte[] Processes(int? fixedOffset = null, int? nonfixedOffset = null)
     {
         int? encoded = fixedOffset != null ? -fixedOffset : nonfixedOffset;
         int count = encoded != null ? 3 : 2;
@@ -489,7 +489,7 @@ public sealed class SaveIntegrityTests
         return data;
     }
 
-    private static byte[] Archive(byte[] processes, byte[] nonfixed) =>
+    internal static byte[] Archive(byte[] processes, byte[] nonfixed) =>
         Build("", "Integrity fixture", [0, 0, 0, 0, 0, 0, 1, 0, 0, 0], [9, 0, 0], [[], processes, []], [(9, nonfixed)]);
 
     private static byte[] TestArchive(params (int Map, byte[] Data)[] maps) =>

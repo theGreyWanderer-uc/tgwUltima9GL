@@ -1,5 +1,39 @@
 # U9GL changes
 
+What changed in each release, for players. Settings named here are in the U9GL launcher.
+
+## 0.6.2 (2026-11-26)
+
+- **New Game from the journal now works.** The original game, as GOG and Steam sell it, ships
+  without the save the journal's New Game needs, so a new game started from the journal skipped
+  the opening and left the toolbelt, backpack and journal behind. In the launcher, open
+  **Save data** and press **Make the new-game snapshot**: the game plays its opening, U9GL saves
+  the snapshot and closes the game, in about two minutes. You may skip the intro video with
+  Escape. Make it before installing fan patches. Until it exists, Save data carries a yellow badge.
+- **Mouse sensitivity.** Set how fast the camera turns, from 50% to 300%, on the Game page. The
+  original turns less the wider your screen; "Mouse sensitivity at high resolutions" makes up for
+  that on wide screens. "Invert mouse" is there too. The in-game keys still work.
+- **Speech and subtitles.** A Conversation section on the Game page: voices with subtitles (the
+  original), voices without subtitles, or subtitles only, and whether the Avatar repeats the reply
+  you choose. With a patch that rewrites the dialogue, choose subtitles only: the recordings still
+  say the original lines.
+- **Fan patches recognised.** A Fan patches card on the dashboard names what is installed: the
+  Forgotten World patches (1.19.01, 1.19G, 1.19H), Grandor's Dialogue Patch (1.4, 1.5, 1.6) and
+  Novum's Economy and Monster patches. It says when a newer version exists and what each patch
+  means for your saves. A changed file no known patch explains is described instead of only being
+  called modified.
+- **A changed u9.exe is described.** If your u9.exe is not the original, the dashboard's Game data
+  card now says which parts of it differ, and names what stat mods change there: weapon damage and
+  reach, damage types, blocking and hit effects, shields, armour, gold piles, and creature
+  resistances. It tells an edit to these game values apart from a change to the game's code.
+  For now it only reports: U9GL still needs the original u9.exe to install and play.
+- **Saves started before a fan patch.** Save data and the dashboard point out saves started before
+  Forgotten World 1.19G or 1.19H (they miss the companions and may keep the floating Runes), or
+  before the Monster Patch (monsters keep their old hit points). Such saves still load normally.
+- **Launcher.** Save data is now second in the list, under the Dashboard. The dashboard has four
+  cards, and checks the game's data files as it opens, reading only what changed. No check runs
+  while the game is running. The Game page is split into sections.
+
 ## 0.6.1 (2026-11-24)
 
 Bug fixes only. Where a problem came in with a recent release, its line says which.

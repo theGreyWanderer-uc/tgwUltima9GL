@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Data\u9-game-data.tsv" />
+    <EmbeddedResource Include="Data\u9-entry-fingerprints.tsv" />
+    <EmbeddedResource Include="Data\u9-exe-blocks.tsv" />
   </ItemGroup>
 
   <ItemGroup>

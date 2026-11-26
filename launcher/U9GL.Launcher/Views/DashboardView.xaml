@@ -1,95 +1,149 @@
 <UserControl x:Class="U9GL.Launcher.Views.DashboardView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel DataContext="{Binding Main}">
+    <UserControl.Resources>
+        <DataTemplate x:Key="StatusRowTemplate">
+            <Grid ColumnDefinitions="180, *" RowDefinitions="Auto, Auto" Margin="0,3" Background="Transparent"
+                  ToolTip="{Binding Note}">
+                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1" Text="{Binding ShortStatus}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Note}" Style="{StaticResource SecondaryTextStyle}"
+                           Margin="0,2,0,4" Visibility="{Binding ShowNote, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+        </DataTemplate>
+
+        <Style x:Key="CardHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource SectionTitleStyle}">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="GridCardStyle" TargetType="Border" BasedOn="{StaticResource CardStyle}">
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel DataContext="{Binding Main}" MaxWidth="1240" HorizontalAlignment="Left"
+                Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ContentControl}}">
         <TextBlock Text="Dashboard" Style="{StaticResource PageTitleStyle}" />
         <TextBlock Text="Checks the game and the U9GL files, and installs, updates, repairs or removes U9GL."
-                   Style="{StaticResource SecondaryTextStyle}" Margin="0,0,0,12" />
+                   Style="{StaticResource SecondaryTextStyle}" Margin="0,0,0,16" />
 
         <Border Style="{StaticResource CardStyle}"
                 Visibility="{Binding ErrorText, Converter={StaticResource TextToVisibility}}">
             <TextBlock Text="{Binding ErrorText}" Style="{StaticResource ErrorTextStyle}" />
         </Border>
 
-        <TextBlock Text="Game" Style="{StaticResource SectionTitleStyle}" />
-        <Border Style="{StaticResource CardStyle}">
-            <Grid ColumnDefinitions="130, *" RowDefinitions="Auto, Auto, Auto, Auto">
-                <TextBlock Grid.Row="0" Text="Folder" Margin="0,0,0,8" />
-                <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
-                    <Button DockPanel.Dock="Right" Content="Open" Command="{Binding OpenGameFolderCommand}" Padding="12,2" />
-                    <TextBlock Text="{Binding GameFolderPath}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                </DockPanel>
+        <Grid ColumnDefinitions="*, 16, *" RowDefinitions="Auto, Auto">
 
-                <TextBlock Grid.Row="1" Text="Build" Margin="0,0,0,8" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                           Foreground="{Binding BuildTone, Converter={StaticResource ToneBrush}}" />
+            <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource GridCardStyle}">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Check again" Command="{Binding RefreshCommand}"
+                                Padding="12,3" VerticalAlignment="Top" />
+                        <TextBlock Text="Game" Style="{StaticResource CardHeaderStyle}" />
+                    </DockPanel>
+                    <Grid ColumnDefinitions="150, *" RowDefinitions="Auto, Auto, Auto, Auto">
+                        <TextBlock Grid.Row="0" Text="Folder" Margin="0,3" VerticalAlignment="Center" />
+                        <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,3">
+                            <Button DockPanel.Dock="Right" Content="Open" Command="{Binding OpenGameFolderCommand}" Padding="10,1" Margin="8,0,0,0" />
+                            <TextBlock Text="{Binding GameFolderPath}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                       ToolTip="{Binding GameFolderPath}" />
+                        </DockPanel>
 
-                <TextBlock Grid.Row="2" Text="Renderer setting" Margin="0,0,0,8" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RasterizerText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                           Foreground="{Binding RasterizerTone, Converter={StaticResource ToneBrush}}" />
+                        <TextBlock Grid.Row="1" Text="Build" Margin="0,3" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildText}" TextWrapping="Wrap" Margin="0,3"
+                                   FontWeight="SemiBold" Foreground="{Binding BuildTone, Converter={StaticResource ToneBrush}}" />
 
-                <TextBlock Grid.Row="3" Text="Folder access" />
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding WritableText}" TextWrapping="Wrap"
-                           Foreground="{Binding WritableTone, Converter={StaticResource ToneBrush}}" />
-            </Grid>
-        </Border>
-        <TextBlock Text="{Binding RunningText}" Style="{StaticResource WarningTextStyle}" Margin="0,0,0,8"
-                   Visibility="{Binding RunningText, Converter={StaticResource TextToVisibility}}" />
-        <TextBlock Text="{Binding VirtualStoreText}" Style="{StaticResource WarningTextStyle}" Margin="0,0,0,8"
-                   Visibility="{Binding VirtualStoreText, Converter={StaticResource TextToVisibility}}" />
+                        <TextBlock Grid.Row="2" Text="Renderer setting" Margin="0,3" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RasterizerText}" TextWrapping="Wrap" Margin="0,3"
+                                   FontWeight="SemiBold" Foreground="{Binding RasterizerTone, Converter={StaticResource ToneBrush}}" />
 
-        <TextBlock Text="Game data" Style="{StaticResource SectionTitleStyle}" />
-        <Border Style="{StaticResource CardStyle}" DataContext="{Binding GameData}">
-            <StackPanel>
-                <ItemsControl ItemsSource="{Binding DashboardRows}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid ColumnDefinitions="150, 130, *" Margin="0,3">
-                                <TextBlock Text="{Binding Title}" />
-                                <TextBlock Grid.Column="1" Text="{Binding ShortStatus}" FontWeight="SemiBold"
-                                           Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
-                                <TextBlock Grid.Column="2" Text="{Binding Note}" Style="{StaticResource SecondaryTextStyle}"
-                                           TextWrapping="Wrap" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <ProgressBar Value="{Binding Progress, Mode=OneWay}" Maximum="1" Height="4" Margin="0,8,0,0"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
-                <TextBlock Text="{Binding ProgressText}" Style="{StaticResource SecondaryTextStyle}" Margin="0,4,0,0"
-                           Visibility="{Binding ProgressText, Converter={StaticResource TextToVisibility}}" />
-            </StackPanel>
-        </Border>
+                        <TextBlock Grid.Row="3" Text="Folder access" Margin="0,3" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding WritableText}" TextWrapping="Wrap" Margin="0,3"
+                                   FontWeight="SemiBold" Foreground="{Binding WritableTone, Converter={StaticResource ToneBrush}}" />
+                    </Grid>
+                    <TextBlock Text="{Binding RunningText}" Style="{StaticResource WarningTextStyle}" Margin="0,8,0,0"
+                               Visibility="{Binding RunningText, Converter={StaticResource TextToVisibility}}" />
+                    <TextBlock Text="{Binding VirtualStoreText}" Style="{StaticResource WarningTextStyle}" Margin="0,8,0,0"
+                               Visibility="{Binding VirtualStoreText, Converter={StaticResource TextToVisibility}}" />
+                </StackPanel>
+            </Border>
 
-        <TextBlock Text="U9GL files" Style="{StaticResource SectionTitleStyle}" />
-        <Border Style="{StaticResource CardStyle}">
-            <ItemsControl ItemsSource="{Binding Components}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnDefinitions="150, 80, 130, *" Margin="0,3">
-                            <TextBlock Text="{Binding Name}" />
-                            <TextBlock Grid.Column="1" Text="{Binding VersionText}" />
-                            <TextBlock Grid.Column="2" Text="{Binding StatusText}"
-                                       Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
-                            <TextBlock Grid.Column="3" Text="{Binding Note}" Style="{StaticResource SecondaryTextStyle}" />
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </Border>
+            <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource GridCardStyle}">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="{Binding InstallButtonText}" Command="{Binding InstallCommand}"
+                                Style="{DynamicResource AccentButtonStyle}" Padding="16,3" VerticalAlignment="Top" />
+                        <TextBlock Text="U9GL files" Style="{StaticResource CardHeaderStyle}" />
+                    </DockPanel>
+                    <ItemsControl ItemsSource="{Binding Components}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="150, 90, *" RowDefinitions="Auto, Auto" Margin="0,3"
+                                      Background="Transparent" ToolTip="{Binding Note}">
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding VersionText}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                               Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
+                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Note}" Margin="0,2,0,4">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryTextStyle}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Tone}" Value="Warning">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Tone}" Value="Bad">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
 
-        <WrapPanel Margin="0,4,0,0">
-            <Button Content="{Binding InstallButtonText}" Command="{Binding InstallCommand}"
-                    Style="{DynamicResource AccentButtonStyle}" Padding="22,6" Margin="0,0,8,8" />
-            <Button Content="Uninstall" Command="{Binding UninstallCommand}" Padding="16,6" Margin="0,0,8,8" />
-            <Button Content="Check again" Command="{Binding RefreshCommand}" Padding="16,6" Margin="0,0,8,8" />
-            <Button Content="Check game data" Command="{Binding GameData.CheckCommand}" Padding="16,6" Margin="0,0,8,8"
-                    ToolTip="Reads every shipped data file and compares it with the release, by SHA-256. About a gigabyte; a few seconds." />
-            <Button Content="Open log folder" Command="{Binding OpenLogFolderCommand}" Padding="16,6" Margin="0,0,8,8" />
-            <Button Content="Open backups" Command="{Binding OpenBackupFolderCommand}" Padding="16,6" Margin="0,0,8,8" />
+            <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource GridCardStyle}" DataContext="{Binding GameData}">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Check game data" Command="{Binding CheckCommand}"
+                                Padding="12,3" VerticalAlignment="Top"
+                                ToolTip="Reads every shipped data file and compares it with the release, by SHA-256. About a gigabyte; a few seconds." />
+                        <TextBlock Text="Game data" Style="{StaticResource CardHeaderStyle}" />
+                    </DockPanel>
+                    <ItemsControl ItemsSource="{Binding DashboardRows}" ItemTemplate="{StaticResource StatusRowTemplate}" />
+                    <TextBlock Text="EXE modifications" FontWeight="SemiBold" Margin="0,12,0,4" />
+                    <ItemsControl ItemsSource="{Binding Exe.Rows}" ItemTemplate="{StaticResource StatusRowTemplate}" />
+                    <ProgressBar Value="{Binding Progress, Mode=OneWay}" Maximum="1" Height="4" Margin="0,8,0,0"
+                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding ProgressText}" Style="{StaticResource SecondaryTextStyle}" Margin="0,4,0,0"
+                               Visibility="{Binding ProgressText, Converter={StaticResource TextToVisibility}}" />
+                    <TextBlock Text="{Binding SummaryText}" Style="{StaticResource SecondaryTextStyle}" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource GridCardStyle}" DataContext="{Binding GameData}">
+                <StackPanel>
+                    <TextBlock Text="Fan patches" Style="{StaticResource CardHeaderStyle}" />
+                    <TextBlock Text="{Binding FanPatchSummary}" Style="{StaticResource SecondaryTextStyle}" Margin="0,0,0,4"
+                               Visibility="{Binding FanPatchSummary, Converter={StaticResource TextToVisibility}}" />
+                    <ItemsControl ItemsSource="{Binding FanPatchRows}" ItemTemplate="{StaticResource StatusRowTemplate}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <WrapPanel>
+            <Button Content="Uninstall" Command="{Binding UninstallCommand}" Padding="16,5" Margin="0,0,8,8" />
+            <Button Content="Open log folder" Command="{Binding OpenLogFolderCommand}" Padding="16,5" Margin="0,0,8,8" />
+            <Button Content="Open backups" Command="{Binding OpenBackupFolderCommand}" Padding="16,5" Margin="0,0,8,8" />
         </WrapPanel>
 
-        <TextBlock Text="Last Change:" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Text="Last change" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,8" />
         <Border Style="{StaticResource CardStyle}">
             <Grid>
                 <TextBlock Text="Nothing yet this session.">

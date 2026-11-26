@@ -105,6 +105,8 @@ public sealed partial class SaveIntegrityChecker
             if (CheckNonfixed(report, $"archive/{member.Name}", member.Data.ToArray(), $"{archivePath}!{member.Name}",
                               member.MapNumber!.Value) is { } parsed)
                 archiveNonfixed[member.MapNumber!.Value] = parsed;
+        if (Path.GetDirectoryName(Path.GetFullPath(staticPath)) is { } installRoot)
+            CheckFanPatch(report, archiveNonfixed, Path.Combine(installRoot, "runtime"), archivePath);
         foreach (var (map, path) in looseNonfixed.OrderBy(kv => kv.Key))
             CheckNonfixed(report, $"working/nonfixed.{map}", ReadLoose(path), path, map);
 
@@ -236,6 +238,31 @@ public sealed partial class SaveIntegrityChecker
                 report.Add("LAY01", Axis.Compatibility, Severity.Info, $"fixed.{map} is byte-identical to the trusted reference", current,
                     null, ("map_number", map), ("maps", new List<int> { map }));
         }
+    }
+
+    private static void CheckFanPatch(IntegrityReport report, Dictionary<int, U9Nonfixed> archiveNonfixed,
+                                      string runtimeDirectory, string archivePath)
+    {
+        var installed = FanPatch.InstalledState(runtimeDirectory);
+        var saved = FanPatch.SaveState(archiveNonfixed);
+        if (installed.Companions == true && saved.Companions == false)
+            report.Add("FWP01", Axis.Compatibility, Severity.Info,
+                "the installed maps carry the Forgotten World companion fix (1.19G and later), but this save's own " +
+                "copy of map 9 predates it: Mariah and Jaana will not come to Moonglow and Yew after their shrines; " +
+                "the patch's other fixes work in this save",
+                $"{archivePath}!nonfixed.{FanPatch.CompanionMap}", null, ("maps", new List<int> { FanPatch.CompanionMap }));
+
+        var lowered = installed.LoweredShrines().ToHashSet();
+        var floating = saved.StockShrines().Where(lowered.Contains).ToList();
+        if (floating.Count == 0) return;
+        var shrines = floating.Select(o => o.Shrine).Distinct().Order(StringComparer.Ordinal).ToList();
+        var maps = floating.Select(o => o.MapNumber).Distinct().Order().ToList();
+        report.Add("FWP02", Axis.Compatibility, Severity.Info,
+            "the installed maps carry the Forgotten World 1.19H Rune fix, but this save's own maps still hold " +
+            $"{floating.Count} Runes and virtue items at their old floating heights, at {shrines.Count} shrines: " +
+            string.Join(", ", shrines),
+            $"{archivePath}!" + string.Join(", ", maps.Select(m => $"nonfixed.{m}")), null,
+            ("count", shrines.Count), ("shrine_names", string.Join(", ", shrines)), ("maps", maps));
     }
 
     private static U9Nonfixed? CheckNonfixed(IntegrityReport report, string name, byte[] data, string source, int map)

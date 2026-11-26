@@ -118,6 +118,237 @@ public sealed class GameDataTests
         Assert.AreEqual("1.19H", result.Files.Single().Build);
     }
 
+    private static GameDataManifest PatchManifest() => Manifest(
+        $"static\ta.flx\t3\t{OneSha}\t1.19F",
+        $"static\ta.flx\t3\t{TwoSha}\tFW 1.19.01",
+        $"static\tb.flx\t3\t{OneSha}\tFW 1.19.01\tbackup");
+
+    [TestMethod]
+    public void AFileOnlyAPatchBringsIsNotMissedOnAStockInstall()
+    {
+        Write("a.flx", "one");
+
+        var result = new GameDataChecker(PatchManifest()).Check(_root, "static");
+
+        Assert.AreEqual(1, result.Total, "the backup is not one of the release's files");
+        Assert.AreEqual(1, result.Ok);
+        Assert.AreEqual(0, result.Missing);
+        Assert.AreEqual(0, result.PatchSets().Count);
+        Assert.AreEqual(1, PatchManifest().FileCount("static"));
+    }
+
+    [TestMethod]
+    public void APatchedInstallNamesItsPatch()
+    {
+        Write("a.flx", "two");
+        Write("b.flx", "one");
+
+        var result = new GameDataChecker(PatchManifest()).Check(_root, "static");
+
+        Assert.AreEqual(2, result.Patched);
+        Assert.AreEqual(0, result.Extra, "the backup is known, not extra");
+        Assert.IsTrue(result.AllKnownGood);
+        Assert.IsTrue(result.Files.Single(f => f.Name == "b.flx").Backup);
+        Assert.AreEqual("FW 1.19.01", GameDataPatch.Resolve(result.PatchSets()).Build);
+    }
+
+    [TestMethod]
+    public void ALeftoverBackupDoesNotReadAsThePatch()
+    {
+        Write("a.flx", "one");
+        Write("b.flx", "one");
+
+        var result = new GameDataChecker(PatchManifest()).Check(_root, "static");
+
+        Assert.AreEqual(1, result.Ok);
+        Assert.AreEqual(1, result.Patched);
+        Assert.AreEqual(0, result.PatchSets().Count);
+    }
+
+    [TestMethod]
+    public void ABackupWithOtherContentsIsChanged()
+    {
+        Write("a.flx", "two");
+        Write("b.flx", "two");
+
+        var result = new GameDataChecker(PatchManifest()).Check(_root, "static");
+
+        Assert.AreEqual(GameDataState.Changed, State(result, "b.flx"));
+    }
+
+    [TestMethod]
+    public void ManifestReadsTheKindColumn()
+    {
+        Assert.IsTrue(PatchManifest().For("static", "b.flx").Single().Backup);
+        Assert.IsFalse(PatchManifest().For("static", "a.flx").Any(e => e.Backup));
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            GameDataManifest.Parse($"static\ta.flx\t3\t{OneSha}\t1.19F\tsomething\n"));
+    }
+
+    [TestMethod]
+    public void TheEmbeddedManifestKnowsTheMusicFixPatch()
+    {
+        var manifest = GameDataManifest.Load();
+        var triggers = manifest.For("static", "triggers.flx");
+        Assert.AreEqual(1, triggers.Count(e => e.Build == GameDataManifest.BaseBuild));
+        Assert.IsTrue(triggers.Any(e => e.Build == "FW 1.19.01" && e.Bytes == 242356 && !e.Backup));
+        var backup = manifest.For("static", "triggers-backup.flx").Single();
+        Assert.IsTrue(backup.Backup);
+        Assert.AreEqual(triggers.Single(e => e.Build == GameDataManifest.BaseBuild).Sha256, backup.Sha256,
+                        "the backup is the 1.19F triggers.flx");
+    }
+
+    [TestMethod]
+    public void TheEmbeddedManifestKnowsTheCompanionPatch()
+    {
+        var manifest = GameDataManifest.Load();
+        var g = manifest.Entries.Where(e => e.Build == "FW 1.19G").ToList();
+        CollectionAssert.AreEquivalent(new[] { "static/triggers.flx", "static/activity.flx", "static/highway.dat", "runtime/nonfixed.9" },
+            g.Select(e => $"{e.Folder}/{e.Name.ToLowerInvariant()}").ToArray());
+        Assert.IsTrue(g.All(e => !e.Backup));
+        foreach (var row in g)
+            Assert.IsFalse(manifest.For(row.Folder, row.Name).Any(e => e.Sha256 == row.Sha256 &&
+                           e.Build is GameDataManifest.BaseBuild or "FW 1.19.01"), row.Name);
+    }
+
+    private const string ThreeSha = "44778d82365e4af681c40d5f0eef5cf6f5899d3f0ac335050a7ed6779cf3f674";
+
+    private static GameDataManifest SharedManifest() => Manifest(
+        $"static\ta.flx\t3\t{OneSha}\t1.19F",
+        $"static\ta.flx\t3\t{TwoSha}\tFW 1.19G",
+        $"static\ta.flx\t3\t{ThreeSha}\tFW 1.19H",
+        $"static\tb.flx\t3\t{OneSha}\t1.19F",
+        $"static\tb.flx\t3\t{TwoSha}\tFW 1.19G",
+        $"static\tb.flx\t3\t{TwoSha}\tFW 1.19H");
+
+    private GameDataPatchVerdict Installed(string a, string b)
+    {
+        Write("a.flx", a);
+        Write("b.flx", b);
+        return GameDataPatch.Resolve(new GameDataChecker(SharedManifest()).Check(_root, "static").PatchSets());
+    }
+
+    [TestMethod]
+    public void ASharedFileNamesEveryPatchThatShipsIt()
+    {
+        Write("a.flx", "one");
+        Write("b.flx", "two");
+        var b = new GameDataChecker(SharedManifest()).Check(_root, "static").Files.Single(f => f.Name == "b.flx");
+
+        Assert.AreEqual(GameDataState.Patched, b.State);
+        Assert.AreEqual("FW 1.19G", b.Build, "the oldest is the one named");
+        CollectionAssert.AreEqual(new[] { "FW 1.19G", "FW 1.19H" }, b.Builds.ToArray());
+    }
+
+    [TestMethod]
+    public void TheNewerPatchIsNamedWhenItSharesAFileWithTheOlder()
+    {
+        var verdict = Installed("six", "two");
+        Assert.AreEqual(GameDataPatchKind.One, verdict.Kind);
+        Assert.AreEqual("FW 1.19H", verdict.Build);
+    }
+
+    [TestMethod]
+    public void TheOlderPatchIsStillNamedWhenItIsTheOneInstalled()
+    {
+        var verdict = Installed("two", "two");
+        Assert.AreEqual(GameDataPatchKind.One, verdict.Kind);
+        Assert.AreEqual("FW 1.19G", verdict.Build);
+    }
+
+    [TestMethod]
+    public void FilesNoOnePatchShipsTogetherAreMixed()
+    {
+        Assert.AreEqual("FW 1.19H", Installed("six", "one").Build);
+
+        var verdict = GameDataPatch.Resolve([["FW 1.19G"], ["FW 1.19H"], ["FW 1.19G", "FW 1.19H"]]);
+        Assert.AreEqual(GameDataPatchKind.Mixed, verdict.Kind);
+        CollectionAssert.AreEqual(new[] { "FW 1.19G", "FW 1.19H" }, verdict.Names.ToArray(), "the shared file adds no name");
+    }
+
+    [TestMethod]
+    public void OnlySharedFilesPatchedNamesTheOlderPatch()
+    {
+        var verdict = Installed("one", "two");
+        Assert.AreEqual(GameDataPatchKind.One, verdict.Kind);
+        Assert.AreEqual("FW 1.19G", verdict.Build, "never the newer patch on a file it shares");
+    }
+
+    [TestMethod]
+    public void NoPatchedFilesIsNone()
+    {
+        Assert.AreEqual(GameDataPatchKind.None, Installed("one", "one").Kind);
+        Assert.AreEqual(GameDataPatchKind.None, GameDataPatch.Resolve([]).Kind);
+    }
+
+    private static IReadOnlyList<string> Set(params string[] builds) => builds;
+
+    [TestMethod]
+    public void PatchesOfDifferentFamiliesAreNotAMix()
+    {
+        var sets = new[] { Set("FW 1.19H"), Set("DP 1.5"), Set("DP 1.4", "DP 1.5", "Economy") };
+        var all = GameDataPatch.ResolveAll(sets);
+        CollectionAssert.AreEqual(new[] { "FW", "DP", "Economy" }, all.Select(p => p.Family).ToArray());
+        Assert.AreEqual("FW 1.19H", all[0].Verdict.Build);
+        Assert.AreEqual("DP 1.5", all[1].Verdict.Build);
+        Assert.AreEqual(GameDataPatchKind.One, all[2].Verdict.Kind);
+        Assert.AreEqual(GameDataPatchKind.None, GameDataPatch.ResolveFamily(sets, "Monster").Kind);
+    }
+
+    [TestMethod]
+    public void AVersionOnlySharedFilesShowIsBothFits()
+    {
+        var verdict = GameDataPatch.ResolveFamily([Set("DP 1.4", "DP 1.5"), Set("DP 1.4", "DP 1.5", "Economy")], "DP");
+        Assert.AreEqual(GameDataPatchKind.One, verdict.Kind);
+        Assert.AreEqual("DP 1.4", verdict.Build);
+        CollectionAssert.AreEqual(new[] { "DP 1.4", "DP 1.5" }, verdict.Fits.ToArray());
+    }
+
+    [TestMethod]
+    public void FamilyAndVersionComeFromTheBuildName()
+    {
+        Assert.AreEqual("FW", GameDataPatch.FamilyOf("FW 1.19.01"));
+        Assert.AreEqual("1.19.01", GameDataPatch.VersionOf("FW 1.19.01"));
+        Assert.AreEqual("Economy", GameDataPatch.FamilyOf("Economy"));
+        Assert.AreEqual("", GameDataPatch.VersionOf("Economy"));
+    }
+
+    [TestMethod]
+    public void EveryPatchBuildInTheManifestHasAFamily()
+    {
+        var known = GameDataPatch.Families.Select(f => f.Id).ToHashSet();
+        var builds = GameDataManifest.Load().Builds().Where(b => b != GameDataManifest.BaseBuild);
+        foreach (string build in builds)
+            Assert.IsTrue(known.Contains(GameDataPatch.FamilyOf(build)), $"{build} belongs to no family the launcher lists");
+        foreach (var family in GameDataPatch.Families.Where(f => f.Latest != null))
+            Assert.IsTrue(GameDataManifest.Load().Builds().Contains(family.Latest!), $"{family.Latest} has no manifest rows");
+    }
+
+    [TestMethod]
+    public void PatchNamesSortOldestFirst()
+    {
+        var names = new[] { "FW 1.19H", "FW 1.19.01", "FW 1.19G" }.Order(GameDataPatch.Oldest).ToArray();
+        CollectionAssert.AreEqual(new[] { "FW 1.19.01", "FW 1.19G", "FW 1.19H" }, names);
+    }
+
+    [TestMethod]
+    public void TheEmbeddedManifestKnowsTheLatestPatch()
+    {
+        var manifest = GameDataManifest.Load();
+        var h = manifest.Entries.Where(e => e.Build == "FW 1.19H").ToList();
+        CollectionAssert.AreEquivalent(
+            new[] { "static/triggers.flx", "static/activity.flx", "static/highway.dat", "runtime/nonfixed.9", "runtime/nonfixed.22" },
+            h.Select(e => $"{e.Folder}/{e.Name.ToLowerInvariant()}").ToArray());
+        foreach (var row in h)
+        {
+            var same = manifest.For(row.Folder, row.Name).Where(e => e.Sha256 == row.Sha256).Select(e => e.Build).ToList();
+            if (row.Name.Equals("highway.dat", StringComparison.OrdinalIgnoreCase))
+                CollectionAssert.AreEquivalent(new[] { "FW 1.19G", "FW 1.19H" }, same);
+            else
+                CollectionAssert.AreEqual(new[] { "FW 1.19H" }, same, row.Name);
+        }
+    }
+
     [TestMethod]
     public void AMissingFolderIsReportedWithoutReadingAnything()
     {
@@ -232,6 +463,21 @@ public sealed class GameDataTests
         Assert.AreEqual(GameDataState.Changed, a.State);
         Assert.AreEqual(7, a.ActualBytes);
         Assert.AreEqual(GameDataState.Missing, problems.Single(f => f.Name == "b.flx").State);
+    }
+
+    [TestMethod]
+    public void TheCacheRemembersThePatch()
+    {
+        Write("a.flx", "two");
+        Write("b.flx", "one");
+        string cachePath = Path.Combine(_root, "datacheck.json");
+        GameDataCache.Load(cachePath).Put(_root, new GameDataChecker(PatchManifest()).Check(_root, "static"));
+
+        var entry = GameDataCache.Load(cachePath).Get(_root, "static")!;
+        Assert.AreEqual(1, entry.PatchSets.Count);
+        CollectionAssert.AreEqual(new[] { "FW 1.19.01" }, entry.PatchSets[0].ToArray());
+        Assert.AreEqual(2, entry.Problems.Count(f => f.State == GameDataState.Patched), "patched rows are kept to show");
+        Assert.IsTrue(entry.Problems.Single(f => f.Name == "b.flx").Backup);
     }
 
     [TestMethod]

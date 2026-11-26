@@ -29,19 +29,33 @@
             </StackPanel>
             <ListBox ItemsSource="{Binding Pages}"
                      SelectedItem="{Binding SelectedPage}"
-                     DisplayMemberPath="Title"
                      BorderThickness="0"
-                     Background="Transparent" />
+                     Background="Transparent">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:PageViewModel}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                            <ContentControl Margin="8,0,0,0" Style="{StaticResource CautionIconInfoBadgeStyle}"
+                                            ToolTip="{Binding AttentionText}"
+                                            Visibility="{Binding ShowCaution, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </DockPanel>
 
         <ScrollViewer x:Name="PageScroll" Grid.Row="0" Grid.Column="1" VerticalScrollBarVisibility="Auto">
             <ContentControl Content="{Binding SelectedPage}"
-                            Margin="32,24,32,24"
-                            HorizontalAlignment="Left">
+                            Margin="32,24,32,24">
                 <ContentControl.Style>
                     <Style TargetType="ContentControl">
                         <Setter Property="MaxWidth" Value="780" />
+                        <Setter Property="HorizontalAlignment" Value="Left" />
                         <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedPage.Title}" Value="Dashboard">
+                                <Setter Property="MaxWidth" Value="Infinity" />
+                                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding SelectedPage.Title}" Value="Fixes">
                                 <Setter Property="MaxWidth" Value="1240" />
                             </DataTrigger>

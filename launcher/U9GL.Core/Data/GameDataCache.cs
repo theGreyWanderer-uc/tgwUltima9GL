@@ -21,6 +21,8 @@ public sealed class GameDataCacheEntry
     public int Unreadable { get; set; }
 
     public List<GameDataFile> Problems { get; set; } = [];
+
+    public List<List<string>> PatchSets { get; set; } = [];
 }
 
 public sealed class GameDataCache
@@ -75,7 +77,9 @@ public sealed class GameDataCache
             Missing = result.Missing,
             Extra = result.Extra,
             Unreadable = result.Unreadable,
-            Problems = result.Problems().Take(MaxProblemsKept).ToList(),
+            Problems = result.Files.Where(f => f.State != GameDataState.Ok)
+                                   .OrderBy(f => f.IsProblem ? 0 : 1).Take(MaxProblemsKept).ToList(),
+            PatchSets = result.PatchSets().Select(s => s.ToList()).ToList(),
         });
         Save();
     }

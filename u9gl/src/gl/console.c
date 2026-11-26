@@ -11,6 +11,7 @@
 #include "../injection/config.h"
 #include "../fix/fixmem.h"
 #include "../fix/gold.h"
+#include "../fix/newgame.h"
 #include "../fix/playerset.h"
 #include "../fix/fixes.h"
 #include "metrics.h"
@@ -20,6 +21,7 @@
 #include "highway.h"
 #include "regions.h"
 #include "console.h"
+#include "snapmode.h"
 #include "../fix/lightwatch.h"
 #include "glsun.h"
 #include "glfog.h"
@@ -570,6 +572,7 @@ static void execute(char *line)
         out("gate [on|off]         open or close the Earth moongate (map 14); bare: its state");
         out("give gold <n>         gold in front of you; give regs <n>: <n> of each reagent");
         out("give item <type>      one item of a type; give lenses: the Codex's Blue and Red lenses");
+        out("newgame [snapshot]    the journal's New Game snapshot: snapshot writes it, right after the opening");
         out("show <virtue> [rune|glyph|item]  reveal the nearest hidden rune, glyph and item of a virtue");
         out("show <type> [<reach>] reveal hidden objects of a type near you, as a quest would");
         out("show <type> [<reach>] shrine  the same, a shrine's own copies too - F-18 test only");
@@ -651,6 +654,8 @@ static void execute(char *line)
         u9quest_gate_command(arg, out);
     } else if (!strcmp(cmd, "give")) {
         u9give_command(arg, out);
+    } else if (!strcmp(cmd, "newgame")) {
+        u9newgame_command(arg, out);
     } else if (!strcmp(cmd, "show")) {
         u9quest_show_command(arg, out);
     } else if (!strcmp(cmd, "keys")) {
@@ -733,7 +738,7 @@ static void paste(void)
 
 static void complete(void)
 {
-    static const char *const cmds[] = { "help", "keys", "pos", "opt", "get", "set", "unset", "tp", "tppos", "list", "lights", "sun", "moon", "fog", "water", "beam", "rays", "halberd", "dump", "post", "pool", "datum", "gate", "give", "show", "clear", "quit" };
+    static const char *const cmds[] = { "help", "keys", "pos", "opt", "get", "set", "unset", "tp", "tppos", "list", "lights", "sun", "moon", "fog", "water", "beam", "rays", "halberd", "dump", "post", "pool", "datum", "gate", "give", "newgame", "show", "clear", "quit" };
     static char names[2048];
     const char *pool[64], *cand[64];
     char words[2][IN_W], path[MAX_PATH], *p;
@@ -808,7 +813,8 @@ static void complete(void)
 
 static LRESULT CALLBACK console_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
 {
-    if (msg == WM_KEYDOWN && wp == VK_OEM_3 && ctrl_down()) {
+    if (u9snapmode_message(msg)) return 0;
+    if (g_enabled && msg == WM_KEYDOWN && wp == VK_OEM_3 && ctrl_down()) {
         g_open = !g_open;
         if (g_open && !g_outCount) out("U9GL console - help for commands, keys for editing");
         return 0;
@@ -906,6 +912,7 @@ static void subclass_once(void)
     EnumWindows(find_game, (LPARAM)&w);
     if (!w) return;
     g_wnd = w;
+    u9snapmode_window(w);
     g_origProc = (WNDPROC)(uintptr_t)SetWindowLongA(w, GWL_WNDPROC, (LONG)(uintptr_t)console_proc);
     if (!g_origProc) { u9log_line("CONSOLE could not subclass the game window (err %lu)", GetLastError()); return; }
     u9life_push("console window procedure", unsubclass);
@@ -948,7 +955,7 @@ void u9console_draw(int surfW, int surfH)
     GLboolean hadScissor;
     int cw, ch, x, y, w, h, rows, i;
 
-    if (!g_enabled) return;
+    if (!g_enabled) { if (u9snapmode_active()) subclass_once(); return; }
     subclass_once();
     if (!g_open && surfW > 0 && surfH > 0) {
         GLboolean sciss = glIsEnabled(GL_SCISSOR_TEST);
