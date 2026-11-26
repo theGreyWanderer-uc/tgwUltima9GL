@@ -75,6 +75,7 @@ public sealed class MainViewModel : ObservableObject
         Pages =
         [
             new DashboardPage(this),
+            new DataPage(this),
             new WebDashboardPage(this),
             new SettingsPage(this, "Display", "The game's resolution and its window. Changes apply the next time the game starts.", For(SettingPage.Display)),
             new SettingsPage(this, "Graphics", "What U9GL adds to the picture: lamp light that stays inside rooms, lamp and sun shadows, the night look, anti-aliasing and replacement textures. Changes apply the next time the game starts.", For(SettingPage.Graphics), twoColumns: true),
@@ -82,7 +83,6 @@ public sealed class MainViewModel : ObservableObject
             new FixesPage(this, For(SettingPage.Fixes)),
             new DiagnosticsPage(this, For(SettingPage.Diagnostics)),
             .. (experimental.Count > 0 ? new PageViewModel[] { new ExperimentalPage(this, experimental) } : []),
-            new DataPage(this),
             new AboutPage(this),
         ];
         _selectedPage = Pages[0];
@@ -124,7 +124,12 @@ public sealed class MainViewModel : ObservableObject
         _log.Write($"U9GL {LauncherVersion.ToString(3)} started for {Folder.Root}");
         LogState();
 
+        Data.Snapshot.RestoreLeftovers();
+
         _ = Data.Current.CheckAsync();
+
+
+        _ = GameData.CheckOnStartAsync();
     }
 
     public GameFolder Folder { get; }
@@ -258,6 +263,8 @@ public sealed class MainViewModel : ObservableObject
         _state.Build.IsSupported ? $"Ultima IX {_state.Build.Display}" :
         $"This u9.exe is not one U9GL supports (SHA-256 {_state.Build.Sha256[..16]}...). U9GL supports the GOG and Steam releases of Ultima IX, both 1.19F.";
 
+    internal GameBuild? Build => _state.Build;
+
     public Tone BuildTone => _state.Build?.IsSupported == true ? Tone.Good : Tone.Bad;
 
     public string RasterizerText => _state.GameRasterizer switch
@@ -281,6 +288,8 @@ public sealed class MainViewModel : ObservableObject
 
     public string RunningText => _state.GameRunning ? "Ultima IX is running. Quit the game to install, uninstall or save settings." : "";
 
+    public bool GameRunning => _state.GameRunning;
+
     public IReadOnlyList<ComponentRowViewModel> Components
     {
         get
@@ -302,6 +311,16 @@ public sealed class MainViewModel : ObservableObject
         _state.Component(Deployer.LoaderRow).Status == ComponentStatus.UpdateAvailable ? "Update" : "Repair";
 
     private bool CanChangeFiles => !_busy && _state.Build?.IsSupported == true && !_state.GameRunning && _state.Writable;
+
+    internal bool CanStartGame => CanPlay;
+
+    internal void SetBusy(bool busy)
+    {
+        _busy = busy;
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    internal bool StartsLargeAddress => LargeAddressOn();
 
     private bool CanPlay => !_busy && _state.Build?.IsSupported == true && !_state.GameRunning && _state.LoaderInstalled;
 
@@ -345,6 +364,7 @@ public sealed class MainViewModel : ObservableObject
         if (_busy) return;
         _state = _deployer.Inspect();
         GameData.Reload();
+        Data.Snapshot.Refresh();
         if (!IsDirty) LoadSettings();
         else RaiseAll();
     }

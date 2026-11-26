@@ -15,11 +15,21 @@ public sealed class DataPage : PageViewModel
     private bool _shown;
     private int _selectedTab;
 
-    public DataPage(MainViewModel main) : base(main, "Data")
+    public DataPage(MainViewModel main) : base(main, "Save data")
     {
         Current = new CurrentSaveViewModel(this);
         Saves = new SaveListViewModel(this);
+        Snapshot = new NewGameSnapshotViewModel(this);
     }
+
+    public NewGameSnapshotViewModel Snapshot { get; }
+
+    public override bool ShowCaution => !Snapshot.Exists;
+
+    public override string AttentionText =>
+        ShowCaution ? "No new-game snapshot: the journal's New Game would start without the toolbelt." : "";
+
+    internal void Recheck() => AttentionChanged();
 
     public CurrentSaveViewModel Current { get; }
     public SaveListViewModel Saves { get; }
@@ -229,6 +239,12 @@ public sealed class ReportViewModel
     public string EvidenceTitle => $"Files read ({Evidence.Count})";
 
     public bool Offers(string action) => Plain.Actions.Contains(action);
+
+    public bool MissesFanPatch => Report.Findings.Any(f => f.CheckId is "FWP01" or "FWP02");
+
+    public string FanPatchAdvice => MissesFanPatch
+        ? "Started before the fan patch, so some of its fixes are missing here. Start a new game for every fix."
+        : "";
 
     public string Summary() =>
         Plain.Cards.FirstOrDefault(c => c.AffectsVerdict && Core.Saves.Severity.Rank(c.Severity) > 0)?.Title ?? Plain.Summary.Title;
@@ -499,6 +515,13 @@ public sealed class SaveRowViewModel(SaveSlotInfo info, bool isCurrent, bool che
 
     public string Summary { get => _summary; private set => SetProperty(ref _summary, value); }
 
+    private string _patch = "";
+    private string _patchTip = "";
+
+    public string PatchText { get => _patch; private set => SetProperty(ref _patch, value); }
+
+    public string PatchTip { get => _patchTip; private set => SetProperty(ref _patchTip, value); }
+
     public ReportViewModel? Report
     {
         get => _report;
@@ -521,6 +544,8 @@ public sealed class SaveRowViewModel(SaveSlotInfo info, bool isCurrent, bool che
         ResultTone = ReportViewModel.ToneOf(overall);
         ResultRank = Severity.Rank(overall);
         Summary = report.Summary();
+        PatchText = report.MissesFanPatch ? "Partial" : "";
+        PatchTip = report.FanPatchAdvice;
         OnPropertyChanged(nameof(HasProblems));
     }
 
@@ -531,6 +556,7 @@ public sealed class SaveRowViewModel(SaveSlotInfo info, bool isCurrent, bool che
         ResultTone = Tone.Neutral;
         ResultRank = -1;
         Summary = note;
+        PatchText = PatchTip = "";
         OnPropertyChanged(nameof(HasProblems));
     }
 
@@ -540,6 +566,7 @@ public sealed class SaveRowViewModel(SaveSlotInfo info, bool isCurrent, bool che
         ResultTone = Tone.Bad;
         ResultRank = SaveListViewModel.UnreadableRank;
         Summary = error;
+        PatchText = PatchTip = "";
         OnPropertyChanged(nameof(HasProblems));
     }
 }

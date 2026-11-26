@@ -473,6 +473,78 @@
   ],
   "game": [
     {
+      "title": "WASD movement",
+      "description": "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held (W and D, say). The spellbook moves from S to E. Off puts it back. The key map is backed up first.",
+      "choices": [
+        {
+          "label": "Off (the original)",
+          "note": ""
+        },
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Mouse sensitivity",
+      "description": "How far the camera turns for a given mouse movement. Shift\u002BAlt\u002BM and Shift\u002BCtrl\u002BM still change it while you play; it starts from this setting again next time.",
+      "choices": [
+        {
+          "label": "50%",
+          "note": ""
+        },
+        {
+          "label": "75%",
+          "note": ""
+        },
+        {
+          "label": "100% (the original)",
+          "note": ""
+        },
+        {
+          "label": "150%",
+          "note": ""
+        },
+        {
+          "label": "200%",
+          "note": ""
+        },
+        {
+          "label": "300%",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Mouse sensitivity at high resolutions",
+      "description": "The original turns less for the same mouse movement the wider the screen: at 1920 wide, a third as far as at 640. On makes up for that, so the sensitivity above feels the same at any resolution. Turning gets faster at high resolutions; lower the sensitivity to taste.",
+      "choices": [
+        {
+          "label": "Off (the original)",
+          "note": ""
+        },
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Invert mouse",
+      "description": "On: pushing the mouse forward looks down. Ctrl\u002BI still switches it while you play.",
+      "choices": [
+        {
+          "label": "Off (the original)",
+          "note": ""
+        },
+        {
+          "label": "On",
+          "note": ""
+        }
+      ]
+    },
+    {
       "title": "Windows key",
       "description": "Whether the Windows key works while the game has focus.",
       "choices": [
@@ -482,32 +554,6 @@
         },
         {
           "label": "Disabled while playing",
-          "note": ""
-        }
-      ]
-    },
-    {
-      "title": "Screenshot (Ctrl\u002BP)",
-      "description": "What Ctrl\u002BP saves into the game folder. Print Screen is left to Windows; Ctrl\u002BF9 still saves U9GL\u0027s own frame dump.",
-      "choices": [
-        {
-          "label": "Off",
-          "note": ""
-        },
-        {
-          "label": "The game\u0027s picture, before U9GL (PNG)",
-          "note": ""
-        },
-        {
-          "label": "The finished picture (PNG)",
-          "note": ""
-        },
-        {
-          "label": "The finished picture, as the game\u0027s TGA",
-          "note": ""
-        },
-        {
-          "label": "Both PNGs, before and after, to compare",
           "note": ""
         }
       ]
@@ -559,20 +605,6 @@
       ]
     },
     {
-      "title": "WASD movement",
-      "description": "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held (W and D, say). The spellbook moves from S to E. Off puts it back. The key map is backed up first.",
-      "choices": [
-        {
-          "label": "Off (the original)",
-          "note": ""
-        },
-        {
-          "label": "On",
-          "note": ""
-        }
-      ]
-    },
-    {
       "title": "Enemies in combat",
       "description": "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. Enemies backing away are unchanged.",
       "choices": [
@@ -582,6 +614,56 @@
         },
         {
           "label": "Run",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Seeing into buildings",
+      "description": "How far from an open building its contents still show. At 700 they can vanish from just outside; 1500 is advised.",
+      "choices": [
+        {
+          "label": "700 (the original)",
+          "note": ""
+        },
+        {
+          "label": "1500",
+          "note": ""
+        },
+        {
+          "label": "3000",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Speech",
+      "description": "Whether characters speak their lines aloud, with or without subtitles. Lines that were never recorded always show as subtitles. With a patch that rewrites the dialogue, choose subtitles only: the recordings still say the original lines.",
+      "choices": [
+        {
+          "label": "Voice with subtitles (the original)",
+          "note": ""
+        },
+        {
+          "label": "Voice without subtitles",
+          "note": ""
+        },
+        {
+          "label": "Subtitles only, no voice",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Avatar repeats your reply",
+      "description": "After you pick a reply in a conversation, the Avatar says it, aloud or as text. Off goes straight to the answer.",
+      "choices": [
+        {
+          "label": "On (the original)",
+          "note": ""
+        },
+        {
+          "label": "Off",
           "note": ""
         }
       ]
@@ -601,19 +683,27 @@
       ]
     },
     {
-      "title": "Seeing into buildings",
-      "description": "How far from an open building its contents still show. At 700 they can vanish from just outside; 1500 is advised.",
+      "title": "Screenshot (Ctrl\u002BP)",
+      "description": "What Ctrl\u002BP saves into the game folder. Print Screen is left to Windows; Ctrl\u002BF9 still saves U9GL\u0027s own frame dump.",
       "choices": [
         {
-          "label": "700 (the original)",
+          "label": "Off",
           "note": ""
         },
         {
-          "label": "1500",
+          "label": "The game\u0027s picture, before U9GL (PNG)",
           "note": ""
         },
         {
-          "label": "3000",
+          "label": "The finished picture (PNG)",
+          "note": ""
+        },
+        {
+          "label": "The finished picture, as the game\u0027s TGA",
+          "note": ""
+        },
+        {
+          "label": "Both PNGs, before and after, to compare",
           "note": ""
         }
       ]

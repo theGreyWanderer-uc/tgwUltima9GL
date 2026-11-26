@@ -24,6 +24,7 @@ int u9cfg_int(const char *key, int def);
 #include "../fix/lightwatch.h"
 #include "../fix/fixes.h"
 #include "../fix/flyerfix.h"
+#include "../fix/mousefix.h"
 #include "furniture.h"
 #include "../common/lifecycle.h"
 #include "diag.h"
@@ -1240,6 +1241,7 @@ static void U9CALL h_present(U9Renderer *self)
     u9portal_tick();
     u9light_tick();
     u9flyer_tick();
+    u9mouse_tick();
     u9furn_tick();
     u9linehit_tick();
     u9fix_los_clamp_tick();

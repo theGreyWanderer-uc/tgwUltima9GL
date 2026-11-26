@@ -64,6 +64,7 @@ static int gate_check(void)
 #include "../fix/fixes.h"
 #include "../fix/gold.h"
 #include "../gl/console.h"
+#include "../gl/snapmode.h"
 #include "../fix/freeplace.h"
 #include "../gl/metrics.h"
 #include "../gl/glslots.h"
@@ -104,6 +105,7 @@ static void attach(void)
     u9fix_install();
     u9gold_install();
     u9console_install();
+    u9snapmode_install();
     u9freeplace_install();
     u9glpost_install_hooks();
     u9gl_two_sided_install();

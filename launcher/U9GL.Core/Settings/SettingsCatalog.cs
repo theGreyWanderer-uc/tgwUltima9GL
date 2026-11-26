@@ -24,6 +24,8 @@ public sealed record SettingDefinition(
     bool InLedger = true,
     bool OnlyValue = false)
 {
+    public string? Group { get; init; }
+
     public SettingChoice Default => Choices.First(c => c.Label == DefaultLabel);
 
     public IEnumerable<SettingChoice> PageChoices =>
@@ -72,6 +74,7 @@ public static class SettingsCatalog
 
     private static SettingKey Game(string key) => new(SettingFile.OptionsIni, "Game", key);
     private static SettingKey Performance(string key) => new(SettingFile.OptionsIni, "Performance", key);
+    private static SettingKey Conversation(string key) => new(SettingFile.OptionsIni, "Conversation", key);
     private static SettingKey U9gl(string key) => new(SettingFile.U9glIni, null, key);
 
     public const string WasdMovementKey = "wasd_movement";
@@ -347,12 +350,117 @@ public static class SettingsCatalog
                 [One("Full (the original)", "GameMipMapLevel", "1", Works)],
                 "Full (the original)", OnlyValue: true),
 
+            new("wasd", SettingPage.Game, "WASD movement",
+                "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held "
+                + "(W and D, say). The spellbook moves from S to E. Off puts it back. The key map is backed up first.",
+                [new(SettingFile.KeyMap, null, WasdMovementKey), U9gl("diagonal_move")],
+                [Pair("Off (the original)", WasdMovementKey, "0", "diagonal_move", "0", Works),
+                 Pair("On", WasdMovementKey, "1", "diagonal_move", "1", Works)],
+                "Off (the original)") { Group = "Controls" },
+
+            new("mouse-sensitivity", SettingPage.Game, "Mouse sensitivity",
+                "How far the camera turns for a given mouse movement. Shift+Alt+M and Shift+Ctrl+M still "
+                + "change it while you play; it starts from this setting again next time.",
+                [U9gl("mouse_sensitivity")],
+                [One("50%", "mouse_sensitivity", "50", Works),
+                 One("75%", "mouse_sensitivity", "75", Works),
+                 One("100% (the original)", "mouse_sensitivity", "100", Works),
+                 One("150%", "mouse_sensitivity", "150", Works),
+                 One("200%", "mouse_sensitivity", "200", Works),
+                 One("300%", "mouse_sensitivity", "300", Works)],
+                "100% (the original)") { Group = "Controls" },
+
+            new("mouse-resolution", SettingPage.Game, "Mouse sensitivity at high resolutions",
+                "The original turns less for the same mouse movement the wider the screen: at 1920 wide, a "
+                + "third as far as at 640. On makes up for that, so the sensitivity above feels the same at "
+                + "any resolution. Turning gets faster at high resolutions; lower the sensitivity to taste.",
+                [U9gl("mouse_sensitivity_resolution")],
+                [One("Off (the original)", "mouse_sensitivity_resolution", "0", Works),
+                 One("On", "mouse_sensitivity_resolution", "1", Works)],
+                "Off (the original)") { Group = "Controls" },
+
+            new("mouse-invert", SettingPage.Game, "Invert mouse",
+                "On: pushing the mouse forward looks down. Ctrl+I still switches it while you play.",
+                [U9gl("mouse_invert")],
+                [One("Off (the original)", "mouse_invert", "0", Works),
+                 One("On", "mouse_invert", "1", Works)],
+                "Off (the original)") { Group = "Controls" },
+
             new("windows-key", SettingPage.Game, "Windows key",
                 "Whether the Windows key works while the game has focus.",
                 [Game("DisableWinKey")],
                 [One("Works as normal", "DisableWinKey", "0", Works),
                  One("Disabled while playing", "DisableWinKey", "1", Works)],
-                "Disabled while playing"),
+                "Disabled while playing") { Group = "Controls" },
+
+            new("gold-cap", SettingPage.Game, "Gold limit",
+                "The most gold the Avatar can carry. Past 9,999 the backpack counts in thousands and millions, "
+                + "in the purse's own lettering: 12,345 reads 12K.",
+                [U9gl("gold_cap")],
+                [One("9,999 (the original)", "gold_cap", "9999", Works),
+                 One("999,999", "gold_cap", "999999", Works)],
+                "999,999") { Group = "Gameplay" },
+
+            new("backpack", SettingPage.Game, "Backpack and bag",
+                "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold "
+                + "far more. If you switch back to the grid, items past 20 (9 in a bag) drop beside the Avatar.",
+                [U9gl("pack_capacity"), U9gl("free_placement"), U9gl("icon_pixel_hit")],
+                [Backpack("Original grid (20 items, bag 9)", "0", "0", Works),
+                 Backpack("Free placement, up to 1,024 items", "1024", "1", Works),
+                 Backpack("Free placement, up to 4,096 items", "4096", "1", Works)],
+                "Original grid (20 items, bag 9)") { Group = "Gameplay" },
+
+            new("halberd", SettingPage.Game, "Usable halberds",
+                "The game has a finished halberd, a staff weapon with its own icon, but leaves every "
+                + "halberd in the world as scenery. On lets you pick them up, carry them and fight with "
+                + "them, with the battleaxe's sounds. Off is the original game.",
+                [U9gl("restore_halberd")],
+                [One("On", "restore_halberd", "1", Works),
+                 One("Off (the original)", "restore_halberd", "0", Works)],
+                "On") { Group = "Gameplay" },
+
+            new("combat-run", SettingPage.Game, "Enemies in combat",
+                "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. "
+                + "Enemies backing away are unchanged.",
+                [U9gl("fix_combat_run")],
+                [One("Walk (the original)", "fix_combat_run", "0", Works),
+                 One("Run", "fix_combat_run", "1", Works)],
+                "Run") { Group = "Gameplay" },
+
+            new("portal-range", SettingPage.Game, "Seeing into buildings",
+                "How far from an open building its contents still show. At 700 they can vanish from "
+                + "just outside; 1500 is advised.",
+                [Performance("MaximumPortalRange")],
+                [One("700 (the original)", "MaximumPortalRange", "700", Works),
+                 One("1500", "MaximumPortalRange", "1500", Works),
+                 One("3000", "MaximumPortalRange", "3000", Works)],
+                "1500") { Group = "Gameplay" },
+
+            new("speech", SettingPage.Game, "Speech",
+                "Whether characters speak their lines aloud, with or without subtitles. Lines that were "
+                + "never recorded always show as subtitles. With a patch that rewrites the dialogue, choose "
+                + "subtitles only: the recordings still say the original lines.",
+                [Conversation("EnableAudio"), Conversation("EnableText")],
+                [Pair("Voice with subtitles (the original)", "EnableAudio", "1", "EnableText", "1", Works),
+                 Pair("Voice without subtitles", "EnableAudio", "1", "EnableText", "0", Works),
+                 Pair("Subtitles only, no voice", "EnableAudio", "0", "EnableText", "1", Works)],
+                "Voice with subtitles (the original)") { Group = "Conversation" },
+
+            new("convo-replies", SettingPage.Game, "Avatar repeats your reply",
+                "After you pick a reply in a conversation, the Avatar says it, aloud or as text. Off goes "
+                + "straight to the answer.",
+                [Conversation("EnableConvoReplies")],
+                [One("On (the original)", "EnableConvoReplies", "1", Works),
+                 One("Off", "EnableConvoReplies", "0", Works)],
+                "On (the original)") { Group = "Conversation" },
+
+            new("large-address", SettingPage.Game, "Large address space",
+                "Up to 4 GB of memory instead of 2 GB, for many high-resolution textures. U9GL starts a "
+                + "copy, u9-laa.exe; your u9.exe is never changed.",
+                [U9gl("large_address")],
+                [One("Off (the original, 2 GB)", "large_address", "0", Works),
+                 One("On (4 GB)", "large_address", "1", Works)],
+                "On (4 GB)") { Group = "System" },
 
             new("screenshot", SettingPage.Game, "Screenshot (Ctrl+P)",
                 "What Ctrl+P saves into the game folder. Print Screen is left to Windows; Ctrl+F9 still "
@@ -363,66 +471,7 @@ public static class SettingsCatalog
                  One("The finished picture (PNG)", "gl_screenshot", "2", Works),
                  One("The finished picture, as the game's TGA", "gl_screenshot", "3", Works),
                  One("Both PNGs, before and after, to compare", "gl_screenshot", "4", Works)],
-                "The finished picture (PNG)"),
-
-            new("gold-cap", SettingPage.Game, "Gold limit",
-                "The most gold the Avatar can carry. Past 9,999 the backpack counts in thousands and millions, "
-                + "in the purse's own lettering: 12,345 reads 12K.",
-                [U9gl("gold_cap")],
-                [One("9,999 (the original)", "gold_cap", "9999", Works),
-                 One("999,999", "gold_cap", "999999", Works)],
-                "999,999"),
-
-            new("backpack", SettingPage.Game, "Backpack and bag",
-                "Free placement: items stay where you drop them, may overlap, and the backpack and bags hold "
-                + "far more. If you switch back to the grid, items past 20 (9 in a bag) drop beside the Avatar.",
-                [U9gl("pack_capacity"), U9gl("free_placement"), U9gl("icon_pixel_hit")],
-                [Backpack("Original grid (20 items, bag 9)", "0", "0", Works),
-                 Backpack("Free placement, up to 1,024 items", "1024", "1", Works),
-                 Backpack("Free placement, up to 4,096 items", "4096", "1", Works)],
-                "Original grid (20 items, bag 9)"),
-
-            new("halberd", SettingPage.Game, "Usable halberds",
-                "The game has a finished halberd, a staff weapon with its own icon, but leaves every "
-                + "halberd in the world as scenery. On lets you pick them up, carry them and fight with "
-                + "them, with the battleaxe's sounds. Off is the original game.",
-                [U9gl("restore_halberd")],
-                [One("On", "restore_halberd", "1", Works),
-                 One("Off (the original)", "restore_halberd", "0", Works)],
-                "On"),
-
-            new("wasd", SettingPage.Game, "WASD movement",
-                "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held "
-                + "(W and D, say). The spellbook moves from S to E. Off puts it back. The key map is backed up first.",
-                [new(SettingFile.KeyMap, null, WasdMovementKey), U9gl("diagonal_move")],
-                [Pair("Off (the original)", WasdMovementKey, "0", "diagonal_move", "0", Works),
-                 Pair("On", WasdMovementKey, "1", "diagonal_move", "1", Works)],
-                "Off (the original)"),
-
-            new("combat-run", SettingPage.Game, "Enemies in combat",
-                "In the original, most enemies walk up to you in a fight. With Run they run, weapon drawn. "
-                + "Enemies backing away are unchanged.",
-                [U9gl("fix_combat_run")],
-                [One("Walk (the original)", "fix_combat_run", "0", Works),
-                 One("Run", "fix_combat_run", "1", Works)],
-                "Run"),
-
-            new("large-address", SettingPage.Game, "Large address space",
-                "Up to 4 GB of memory instead of 2 GB, for many high-resolution textures. U9GL starts a "
-                + "copy, u9-laa.exe; your u9.exe is never changed.",
-                [U9gl("large_address")],
-                [One("Off (the original, 2 GB)", "large_address", "0", Works),
-                 One("On (4 GB)", "large_address", "1", Works)],
-                "On (4 GB)"),
-
-            new("portal-range", SettingPage.Game, "Seeing into buildings",
-                "How far from an open building its contents still show. At 700 they can vanish from "
-                + "just outside; 1500 is advised.",
-                [Performance("MaximumPortalRange")],
-                [One("700 (the original)", "MaximumPortalRange", "700", Works),
-                 One("1500", "MaximumPortalRange", "1500", Works),
-                 One("3000", "MaximumPortalRange", "3000", Works)],
-                "1500"),
+                "The finished picture (PNG)") { Group = "System" },
 
             new("metrics-overlay", SettingPage.Game, "Metrics overlay",
                 "An on-screen panel of frame rate and what the game is drawing: general, objects and "
@@ -430,7 +479,7 @@ public static class SettingsCatalog
                 [U9gl("metrics_overlay")],
                 [One("Off at start", "metrics_overlay", "0", Works),
                  One("On", "metrics_overlay", "1", Works)],
-                "Off at start"),
+                "Off at start") { Group = "System" },
 
             Fix("fix-actor-init", "fix_actor_init", "Start new actors with clean memory",
                 $"Prevents the {Faults.F3.InSentence}, and {Faults.F4.InSentence}.", Works),

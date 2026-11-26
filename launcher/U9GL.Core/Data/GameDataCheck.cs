@@ -14,8 +14,11 @@ public enum GameDataState
 }
 
 public sealed record GameDataFile(string Folder, string Name, GameDataState State, long ExpectedBytes, long ActualBytes,
-                                  string? Build = null, string? Error = null)
+                                  string? Build = null, string? Error = null, bool Backup = false,
+                                  IReadOnlyList<string>? Builds = null)
 {
+    public IReadOnlyList<string> Builds { get; init; } = Builds ?? (Build == null ? [] : [Build]);
+
     public bool IsProblem => State is GameDataState.Changed or GameDataState.Missing or GameDataState.Unreadable;
 }
 
@@ -33,7 +36,94 @@ public sealed record GameDataFolderResult(
     public int Unreadable => Files.Count(f => f.State == GameDataState.Unreadable);
     public IReadOnlyList<GameDataFile> Problems() => Files.Where(f => f.IsProblem).ToList();
 
+    public IReadOnlyList<IReadOnlyList<string>> PatchSets() =>
+        GameDataPatch.Distinct(Files.Where(f => f.State == GameDataState.Patched && !f.Backup).Select(f => f.Builds));
+
     public bool AllKnownGood => Exists && Changed == 0 && Missing == 0 && Unreadable == 0;
+}
+
+public enum GameDataPatchKind
+{
+    None,
+    One,
+    Mixed,
+}
+
+public sealed record GameDataPatchVerdict(GameDataPatchKind Kind, string? Build, IReadOnlyList<string> Names,
+                                          IReadOnlyList<string>? Fits = null)
+{
+    public IReadOnlyList<string> Fits { get; init; } = Fits ?? (Build == null ? [] : [Build]);
+}
+
+public sealed record FanPatchFamily(string Id, string Title, string? Latest, string About, string? Saves = null);
+
+public static class GameDataPatch
+{
+    public static readonly IReadOnlyList<FanPatchFamily> Families =
+    [
+        new("FW", "Forgotten World", "FW 1.19H",
+            "The Forgotten World team's fixes to music, the companions and the floating Runes."),
+        new("DP", "Grandor's Dialogue Patch", "DP 1.6",
+            "Grandor Dragon's rewritten dialogue, books, journal and item names (fansforultima.com).",
+            "Works with existing saves, but journal entries already written keep the original wording; its readme advises a new game."),
+        new("Economy", "Novum's Economy Patch", null,
+            "Novum's shop prices and stock, shipped with the Dialogue Patch.",
+            "Works with existing saves."),
+        new("Monster", "Novum's Monster Patch", null,
+            "Novum's tougher monsters, shipped with the Dialogue Patch."),
+    ];
+
+    public static string FamilyOf(string build)
+    {
+        int space = build.IndexOf(' ');
+        return space < 0 ? build : build[..space];
+    }
+
+    public static string VersionOf(string build)
+    {
+        int space = build.IndexOf(' ');
+        return space < 0 ? "" : build[(space + 1)..];
+    }
+
+    public static GameDataPatchVerdict ResolveFamily(IEnumerable<IReadOnlyList<string>> sets, string family) =>
+        Resolve(sets.Select(s => (IReadOnlyList<string>)s.Where(b => FamilyOf(b) == family).ToList()));
+
+    public static IReadOnlyList<(string Family, GameDataPatchVerdict Verdict)> ResolveAll(IEnumerable<IReadOnlyList<string>> sets)
+    {
+        var all = sets.ToList();
+        var present = all.SelectMany(s => s).Select(FamilyOf).Distinct().ToList();
+        var order = Families.Select(f => f.Id).ToList();
+        int Rank(string f) { int i = order.IndexOf(f); return i < 0 ? int.MaxValue : i; }
+        return present.OrderBy(Rank).ThenBy(f => f, StringComparer.Ordinal)
+                      .Select(f => (f, ResolveFamily(all, f))).ToList();
+    }
+
+    public static readonly IComparer<string> Oldest = StringComparer.Ordinal;
+
+    public static IReadOnlyList<IReadOnlyList<string>> Distinct(IEnumerable<IReadOnlyList<string>> sets)
+    {
+        var seen = new HashSet<string>();
+        var result = new List<IReadOnlyList<string>>();
+        foreach (var set in sets)
+        {
+            var sorted = set.Distinct().Order(Oldest).ToList();
+            if (sorted.Count > 0 && seen.Add(string.Join("|", sorted))) result.Add(sorted);
+        }
+        return result;
+    }
+
+    public static GameDataPatchVerdict Resolve(IEnumerable<IReadOnlyList<string>> sets)
+    {
+        var all = Distinct(sets);
+        if (all.Count == 0) return new GameDataPatchVerdict(GameDataPatchKind.None, null, []);
+        IEnumerable<string> common = all[0];
+        foreach (var set in all.Skip(1)) common = common.Intersect(set);
+        var fits = common.Order(Oldest).ToList();
+        if (fits.Count > 0) return new GameDataPatchVerdict(GameDataPatchKind.One, fits[0], [fits[0]], fits);
+        var names = all.Where(s => s.Count == 1).Select(s => s[0]).Distinct().Order(Oldest).ToList();
+        if (names.Count == 0) names = all.SelectMany(s => s).Distinct().Order(Oldest).ToList();
+        return new GameDataPatchVerdict(GameDataPatchKind.Mixed, null, names);
+    }
 }
 
 public sealed record GameDataProgress(string Folder, int FilesDone, int FilesTotal, long BytesDone, long BytesTotal, string? Current);
@@ -41,6 +131,8 @@ public sealed record GameDataProgress(string Folder, int FilesDone, int FilesTot
 public sealed class GameDataChecker(GameDataManifest? manifest = null)
 {
     private const int BufferSize = 1 << 20;
+
+    private static readonly HashSet<(string Folder, string Name)> GameWritten = [("static", "u9game0.sav")];
 
     public GameDataManifest Manifest { get; } = manifest ?? GameDataManifest.Load();
 
@@ -69,7 +161,7 @@ public sealed class GameDataChecker(GameDataManifest? manifest = null)
         var expected = Manifest.InFolder(folder).GroupBy(e => e.Name.ToLowerInvariant())
                                .ToDictionary(g => g.Key, g => g.ToList());
         if (!Directory.Exists(path))
-            return new GameDataFolderResult(folder, path, false, expected.Values.Select(Absent).ToList(), 0,
+            return new GameDataFolderResult(folder, path, false, expected.Values.Where(Shipped).Select(Absent).ToList(), 0,
                                             clock.Elapsed, DateTime.UtcNow, fingerprint, [], Manifest.Id);
 
         var onDisk = Directory.EnumerateFiles(path).ToDictionary(p => Path.GetFileName(p).ToLowerInvariant(), p => p,
@@ -78,10 +170,12 @@ public sealed class GameDataChecker(GameDataManifest? manifest = null)
             ? Directory.EnumerateDirectories(path).Select(Path.GetFileName).OfType<string>().Order(StringComparer.OrdinalIgnoreCase).ToList()
             : [];
         var strays = group.ReportExtras
-            ? onDisk.Keys.Except(expected.Keys).Order(StringComparer.OrdinalIgnoreCase).ToList()
+            ? onDisk.Keys.Except(expected.Keys).Where(k => !GameWritten.Contains((folder, k)))
+                    .Order(StringComparer.OrdinalIgnoreCase).ToList()
             : [];
 
-        var work = expected.Select(e => (Name: e.Value[0].Name, Path: onDisk.GetValueOrDefault(e.Key), Rows: e.Value)).ToList();
+        var work = expected.Select(e => (Name: e.Value[0].Name, Path: onDisk.GetValueOrDefault(e.Key), Rows: e.Value))
+                           .Where(w => w.Path != null || Shipped(w.Rows)).ToList();
         long bytesTotal = work.Where(w => w.Path != null).Sum(w => Length(w.Path!));
 
         long bytesDone = 0;
@@ -112,6 +206,8 @@ public sealed class GameDataChecker(GameDataManifest? manifest = null)
                                         DateTime.UtcNow, fingerprint, subfolders, Manifest.Id);
     }
 
+    private static bool Shipped(List<GameDataEntry> rows) => rows.Any(r => r.Build == GameDataManifest.BaseBuild);
+
     private static GameDataFile Absent(List<GameDataEntry> rows) =>
         new(rows[0].Folder, rows[0].Name, GameDataState.Missing, rows[0].Bytes, 0);
 
@@ -126,11 +222,14 @@ public sealed class GameDataChecker(GameDataManifest? manifest = null)
             var sized = rows.Where(r => r.Bytes == length).ToList();
             if (sized.Count == 0) return changed;
             string sha = Sha256(filePath, ref bytesDone, cancel);
-            var match = sized.FirstOrDefault(r => string.Equals(r.Sha256, sha, StringComparison.OrdinalIgnoreCase));
-            if (match == null) return changed;
-            string baseBuild = rows.Select(r => r.Build).Order(StringComparer.Ordinal).First();
-            var state = match.Build == baseBuild ? GameDataState.Ok : GameDataState.Patched;
-            return new GameDataFile(folder, name, state, match.Bytes, length, match.Build);
+            var matches = sized.Where(r => string.Equals(r.Sha256, sha, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count == 0) return changed;
+            var stock = matches.FirstOrDefault(r => r.Build == GameDataManifest.BaseBuild);
+            if (stock != null) return new GameDataFile(folder, name, GameDataState.Ok, stock.Bytes, length, stock.Build);
+            var builds = matches.Select(r => r.Build).Distinct().Order(GameDataPatch.Oldest).ToList();
+            var first = matches.First(r => r.Build == builds[0]);
+            return new GameDataFile(folder, name, GameDataState.Patched, first.Bytes, length, first.Build,
+                                    Backup: first.Backup, Builds: builds);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

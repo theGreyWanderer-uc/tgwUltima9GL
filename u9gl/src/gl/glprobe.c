@@ -5,6 +5,7 @@
 #include "metrics.h"
 #include "../telemetry/publisher.h"
 #include "console.h"
+#include "snapmode.h"
 #include "keys.h"
 #include <GL/gl.h>
 #include <stdint.h>
@@ -994,6 +995,7 @@ int u9gl_own_present(void *self)
             u9shot_after_post(g_surfW, g_surfH);
             u9metrics_overlay(g_surfW, g_surfH);
             u9console_draw(g_surfW, g_surfH);
+            u9snapmode_frame(g_surfW, g_surfH);
         }
         u9glpost_end(g_surfW, g_surfH);
 

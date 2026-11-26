@@ -113,9 +113,45 @@
     </UserControl.Resources>
 
     <StackPanel>
-        <TextBlock Text="Data" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Text="Save data" Style="{StaticResource PageTitleStyle}" />
         <TextBlock Style="{StaticResource SecondaryTextStyle}" Margin="0,0,0,16"
                    Text="Checks saved games against the game's file formats: that the working files came from the save, that each file is intact inside, and that what the save points at exists in the map files. Nothing here changes a game file: backups and saved reports go to Documents\U9GL." />
+
+        <Border Style="{StaticResource CardStyle}" DataContext="{Binding Snapshot}">
+            <StackPanel>
+                <TextBlock Text="New-game snapshot" Style="{StaticResource CardTitleStyle}" FontSize="16" />
+
+                <Border Margin="0,8,0,0" Padding="14,10" CornerRadius="6" BorderThickness="1"
+                        Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                        BorderBrush="{DynamicResource SystemFillColorCautionBrush}"
+                        Visibility="{Binding Missing, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <ContentControl DockPanel.Dock="Left" Style="{StaticResource CautionIconInfoBadgeStyle}"
+                                        Margin="0,2,12,0" VerticalAlignment="Top" />
+                        <StackPanel>
+                            <TextBlock Text="No new-game snapshot exists. Make one now." FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="The journal's New Game starts from a snapshot of the game's opening, and the game as GOG and Steam sell it ships without one. Without it, a new game from the journal skips the opening and keeps your old game's house: the toolbelt, backpack and journal are not on the table, and the game cannot be played properly." />
+                            <TextBlock TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="U9GL can make it: the game starts on a new game, the opening plays, and at the first hint ankh U9GL saves the snapshot and closes the game. About 2 minutes; don't touch anything while it runs. Your current game is set aside and put back. It needs the game's own data files, so make it before installing fan patches. The intro video does not have to play: you may skip it with Escape. After that, wait until the game closes." />
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Content="Make the new-game snapshot" Command="{Binding MakeCommand}"
+                                        Style="{DynamicResource AccentButtonStyle}" Padding="16,6" />
+                                <ProgressBar IsIndeterminate="True" Width="160" Height="4" Margin="16,0,0,0" VerticalAlignment="Center"
+                                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <TextBlock Text="{Binding PresentText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Visibility="{Binding PresentText, Converter={StaticResource TextToVisibility}}" />
+
+                <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                           Foreground="{Binding ResultTone, Converter={StaticResource ToneBrush}}"
+                           Visibility="{Binding ResultText, Converter={StaticResource TextToVisibility}}" />
+            </StackPanel>
+        </Border>
 
         <TabControl SelectedIndex="{Binding SelectedTab}" ItemContainerStyle="{StaticResource SegmentTabItemStyle}">
 
@@ -244,6 +280,15 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Fan patch" SortMemberPath="PatchText" Width="84">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="{x:Type vm:SaveRowViewModel}">
+                                        <TextBlock Text="{Binding PatchText}" ToolTip="{Binding PatchTip}" FontWeight="SemiBold"
+                                                   Style="{StaticResource GridCellText}"
+                                                   Foreground="{Binding Source={x:Static vm:Tone.Warning}, Converter={StaticResource ToneBrush}}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -297,6 +342,24 @@
                     <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
                                Text="Every file the game reads and never writes - u9.exe and the libraries it loads, static, sound, runtime and the movies - checked against the release by SHA-256. Settings, key bindings, saves, manuals and the installer's own files are not checked. Nothing here changes a file." />
                     <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <ItemsControl ItemsSource="{Binding FanPatches}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto, Auto, *" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding Title, StringFormat={}{0}:}" Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ShortStatus}" FontWeight="SemiBold" Margin="0,0,8,0"
+                                               Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Note}" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid DataContext="{Binding Saves}" ColumnDefinitions="Auto, Auto, *" Margin="0,0,0,8">
+                        <TextBlock Text="Saves:" Margin="0,0,8,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding ShortStatus}" FontWeight="SemiBold" Margin="0,0,8,0"
+                                   Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Note}" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                    </Grid>
                     <TextBlock Text="{Binding ErrorText}" Style="{StaticResource ErrorTextStyle}" Margin="0,0,0,8"
                                Visibility="{Binding ErrorText, Converter={StaticResource TextToVisibility}}" />
 

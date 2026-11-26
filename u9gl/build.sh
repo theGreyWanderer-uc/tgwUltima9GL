@@ -111,6 +111,7 @@ U9LOG_SRC="
     src/fix/playerset.c
     src/fix/breathfix.c
     src/fix/diagmove.c
+    src/fix/mousefix.c
     src/fix/lettbook.c
     src/fix/trigprobe.c
     src/fix/meshprobe.c
@@ -118,6 +119,7 @@ U9LOG_SRC="
     src/fix/spellguard.c
     src/fix/clockfix.c
     src/fix/gold.c
+    src/fix/newgame.c
     src/fix/freeplace.c
     src/gl/glprobe.c
     src/gl/glbackground.c
@@ -126,6 +128,7 @@ U9LOG_SRC="
     src/gl/shadowcost.c
     src/gl/console.c
     src/gl/selfsample.c
+    src/gl/snapmode.c
     src/gl/npcscale.c
     src/gl/npccmd.c
     src/gl/questcmd.c

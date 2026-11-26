@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace U9GL.Core.Data;
 
-public sealed record GameDataEntry(string Folder, string Name, long Bytes, string Sha256, string Build);
+public sealed record GameDataEntry(string Folder, string Name, long Bytes, string Sha256, string Build, bool Backup = false);
 
 public sealed record GameDataGroup(string Folder, string Title, string Description, bool ReportExtras)
 {
@@ -12,6 +12,10 @@ public sealed record GameDataGroup(string Folder, string Title, string Descripti
 public sealed class GameDataManifest
 {
     private const string ResourceName = "U9GL.Core.Data.u9-game-data.tsv";
+
+    public const string BaseBuild = "1.19F";
+
+    private const string BackupKind = "backup";
 
     public static readonly IReadOnlyList<GameDataGroup> Groups =
     [
@@ -62,9 +66,12 @@ public sealed class GameDataManifest
                 continue;
             }
             string[] parts = line.Split('\t');
-            if (parts.Length != 5 || !long.TryParse(parts[2], out long bytes))
+            if (parts.Length is < 5 or > 6 || !long.TryParse(parts[2], out long bytes))
                 throw new InvalidDataException($"malformed manifest row: {line}");
-            entries.Add(new GameDataEntry(parts[0], parts[1], bytes, parts[3], parts[4]));
+            string kind = parts.Length == 6 ? parts[5] : "";
+            if (kind is not ("" or BackupKind))
+                throw new InvalidDataException($"unknown kind '{kind}' in manifest row: {line}");
+            entries.Add(new GameDataEntry(parts[0], parts[1], bytes, parts[3], parts[4], kind == BackupKind));
         }
         if (entries.Count == 0) throw new InvalidDataException("the manifest has no entries");
         string id = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
@@ -79,7 +86,7 @@ public sealed class GameDataManifest
         Entries.Where(e => e.Folder == folder);
 
     public int FileCount(string folder) =>
-        Entries.Where(e => e.Folder == folder).Select(e => e.Name.ToLowerInvariant()).Distinct().Count();
+        Entries.Where(e => e.Folder == folder && e.Build == BaseBuild).Select(e => e.Name.ToLowerInvariant()).Distinct().Count();
 
     private static string ReadResource()
     {
