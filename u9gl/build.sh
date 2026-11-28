@@ -119,10 +119,12 @@ U9LOG_SRC="
     src/fix/spellguard.c
     src/fix/clockfix.c
     src/fix/gold.c
+    src/fix/avatarname.c
     src/fix/newgame.c
     src/fix/freeplace.c
     src/gl/glprobe.c
     src/gl/glbackground.c
+    src/gl/glmousemap.c
     src/gl/metrics.c
     src/gl/gpuprof.c
     src/gl/shadowcost.c

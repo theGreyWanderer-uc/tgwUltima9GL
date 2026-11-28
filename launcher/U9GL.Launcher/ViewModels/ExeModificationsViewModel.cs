@@ -33,7 +33,12 @@ public sealed class ExeModificationsViewModel
         }
         if (build.IsSupported)
         {
-            Show([new PlainStatusRow("u9.exe", $"OK, {build.Display}", Tone.Good, build.Source == "Steam"
+            Show([new PlainStatusRow("u9.exe", $"OK, {build.Display}", Tone.Good,
+                build.Change == BuildIdentity.BeautifulBritanniaFog
+                ? "The 1.19F release with Beautiful Britannia's exe patch: two bytes in the fog code give maps 0 to 14, "
+                  + "Britannia among them, the fog-free look Ambrosia has, and Ambrosia normal fog. U9GL uses none of "
+                  + "those bytes, so it runs on this file. To undo it, put back the U9.exe.bak the patcher made."
+                : build.Source == "Steam"
                 ? "The 1.19F release as Steam ships it: the GOG file with EA's signature added. No part is modified."
                 : "The 1.19F release, byte for byte. No part is modified.")]);
             _compared = null;

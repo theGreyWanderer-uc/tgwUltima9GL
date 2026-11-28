@@ -87,5 +87,9 @@ public static class Faults
         "Crash at the edge of a map, in a collision check",
         "Past the edge of a map that does not wrap, a collision check finds something that is not an object, and the game uses it as one.");
 
-    public static IReadOnlyList<Fault> All { get; } = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F11, F12, F13, F15, F16, F17, F18, F19, F23, F24, F25];
+    public static Fault F27 { get; } = new("F-27",
+        "Crash opening the journal at a very high resolution",
+        "Above 4096 pixels wide or high, U9GL gave the journal no picture of the screen, and the game used the missing picture anyway.");
+
+    public static IReadOnlyList<Fault> All { get; } = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F11, F12, F13, F15, F16, F17, F18, F19, F23, F24, F25, F27];
 }

@@ -15,6 +15,7 @@
 #include "../injection/config.h"
 #include "../common/u9time.h"
 #include "glbackground.h"
+#include "glmousemap.h"
 
 static HWND  g_wnd;
 static HDC   g_dc;
@@ -860,6 +861,27 @@ static void sync_game_window(const char *why)
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
 
+int u9gl_last_viewport(int *x, int *y, int *w, int *h);
+
+int u9gl_picture_screen_rect(RECT *out)
+{
+    RECT  cr;
+    POINT tl = {0, 0};
+    int   vx, vy, vw, vh;
+
+    if (!g_wnd || !IsWindow(g_wnd) || !IsWindowVisible(g_wnd)) return 0;
+    if (!GetClientRect(g_wnd, &cr) || !ClientToScreen(g_wnd, &tl)) return 0;
+    if (cr.right <= 0 || cr.bottom <= 0) return 0;
+    if (!u9gl_last_viewport(&vx, &vy, &vw, &vh) || vw <= 0 || vh <= 0) {
+        vx = 0; vy = 0; vw = (int)cr.right; vh = (int)cr.bottom;
+    }
+    out->left   = tl.x + vx;
+    out->top    = tl.y + ((int)cr.bottom - (vy + vh));
+    out->right  = out->left + vw;
+    out->bottom = out->top + vh;
+    return 1;
+}
+
 static int  g_clipOn;
 static RECT g_clipRect;
 
@@ -898,6 +920,7 @@ static void confine_cursor(void)
     br.x = rc.right; br.y = rc.bottom;
     if (!ClientToScreen(g_parent, &tl) || !ClientToScreen(g_parent, &br)) return;
     SetRect(&rc, tl.x, tl.y, br.x, br.y);
+    u9gl_mousemap_narrow_clip(&rc);
     if (IsRectEmpty(&rc)) return;
     if (g_clipOn && EqualRect(&rc, &g_clipRect) && GetClipCursor(&cur) && EqualRect(&cur, &rc))
         return;
@@ -923,6 +946,7 @@ int u9gl_own_present(void *self)
     poll_filter();
     watch_focus();
     follow_focus();
+    u9gl_mousemap_tick();
     confine_cursor();
     if (g_displayClosed) {
         u9gl_discard_frame();

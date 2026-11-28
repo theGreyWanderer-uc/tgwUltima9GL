@@ -63,6 +63,7 @@ static int gate_check(void)
 #include "../telemetry/publisher.h"
 #include "../fix/fixes.h"
 #include "../fix/gold.h"
+#include "../fix/avatarname.h"
 #include "../gl/console.h"
 #include "../gl/snapmode.h"
 #include "../fix/freeplace.h"
@@ -78,6 +79,7 @@ static int gate_check(void)
 #include "../gl/glbackface.h"
 #include "../gl/glanimdraw.h"
 #include "../gl/glbackground.h"
+#include "../gl/glmousemap.h"
 
 static HINSTANCE g_self;
 
@@ -104,6 +106,7 @@ static void attach(void)
 
     u9fix_install();
     u9gold_install();
+    u9avatarname_install();
     u9console_install();
     u9snapmode_install();
     u9freeplace_install();
@@ -113,6 +116,7 @@ static void attach(void)
     u9gl_back_face_install();
     u9gl_anim_draw_install();
     u9gl_background_install();
+    u9gl_mousemap_install();
 
     u9watch_install();
 
@@ -137,6 +141,7 @@ static void detach(int exiting)
     u9watch_report();
     u9fix_report();
     u9gold_report();
+    u9avatarname_report();
     u9probe_report();
     u9furn_report();
 

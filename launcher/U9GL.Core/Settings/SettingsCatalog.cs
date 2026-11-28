@@ -196,7 +196,7 @@ public static class SettingsCatalog
                 [U9gl("gl_post")],
                 [One("On", "gl_post", "1", Works),
                  One("Off (the original picture)", "gl_post", "0", Works)],
-                "On"),
+                "On") { Group = "Picture" },
 
             new("lamp-light", SettingPage.Graphics, "Lamp light",
                 "Candles, torches and lamps light the world per pixel and stay on their own side of walls; "
@@ -205,7 +205,7 @@ public static class SettingsCatalog
                 [U9gl("gl_light_pools"), U9gl("gl_light_shadows")],
                 [Pair("On", "gl_light_pools", "1", "gl_light_shadows", "1", Partial),
                  Pair("Off (the original)", "gl_light_pools", "0", "gl_light_shadows", "0", Works)],
-                "On"),
+                "On") { Group = "Light and shadow" },
 
             new("sun-shadows", SettingPage.Graphics, "Sun shadows",
                 "The Avatar, buildings and trees cast shadows away from the sun, which follows the time of day; "
@@ -213,7 +213,7 @@ public static class SettingsCatalog
                 [U9gl("gl_sun_shadows"), U9gl("gl_sun_shadow_memory")],
                 [Pair("On", "gl_sun_shadows", "1", "gl_sun_shadow_memory", "1", Partial),
                  Pair("Off (the original)", "gl_sun_shadows", "0", "gl_sun_shadow_memory", "0", Works)],
-                "On"),
+                "On") { Group = "Light and shadow" },
 
             new("moon-shadows", SettingPage.Graphics, "Moon shadows",
                 "At night the brighter moon casts faint shadows, as the sun does by day: strongest at full "
@@ -221,7 +221,7 @@ public static class SettingsCatalog
                 [U9gl("gl_moon_shadows")],
                 [One("On", "gl_moon_shadows", "1", Works),
                  One("Off (the original)", "gl_moon_shadows", "0", Works)],
-                "On"),
+                "On") { Group = "Light and shadow" },
 
             new("night-grade", SettingPage.Graphics, "Night look",
                 "At night the world is greyed, darkened and cooled, so lamps stand out. It follows the game's own "
@@ -229,7 +229,7 @@ public static class SettingsCatalog
                 [U9gl("gl_night_grade")],
                 [One("On", "gl_night_grade", "100", Works),
                  One("Off (the original)", "gl_night_grade", "0", Works)],
-                "On"),
+                "On") { Group = "Light and shadow" },
 
             new("underwater-haze", SettingPage.Graphics, "Underwater haze",
                 "Under the water, the view fades into a deep blue with distance, red first, and grows darker "
@@ -237,7 +237,7 @@ public static class SettingsCatalog
                 [U9gl("gl_under_fog")],
                 [One("On", "gl_under_fog", "1", Works),
                  One("Off (the original)", "gl_under_fog", "0", Works)],
-                "On"),
+                "On") { Group = "Underwater" },
 
             new("underwater-caustics", SettingPage.Graphics, "Underwater caustics",
                 "Under the water, a moving web of light from the ripples above plays over the seabed and "
@@ -245,7 +245,7 @@ public static class SettingsCatalog
                 [U9gl("gl_under_caustics")],
                 [One("On", "gl_under_caustics", "1", Works),
                  One("Off (the original)", "gl_under_caustics", "0", Works)],
-                "On"),
+                "On") { Group = "Underwater" },
 
             new("underwater-shafts", SettingPage.Graphics, "Underwater light shafts",
                 "Under the water, sunlight slants down through the surface in beams that follow the sun and "
@@ -253,7 +253,7 @@ public static class SettingsCatalog
                 [U9gl("gl_under_shafts")],
                 [One("On", "gl_under_shafts", "1", Works),
                  One("Off (the original)", "gl_under_shafts", "0", Works)],
-                "On"),
+                "On") { Group = "Underwater" },
 
             new("anti-aliasing", SettingPage.Graphics, "Anti-aliasing",
                 "Draws the world at twice the width and height and averages it down, so edges, leaves and "
@@ -261,7 +261,7 @@ public static class SettingsCatalog
                 [U9gl("gl_ss_scale")],
                 [One("Off", "gl_ss_scale", "1", Works),
                  One("On (2× supersampling)", "gl_ss_scale", "2", Works)],
-                "Off"),
+                "Off") { Group = "Picture" },
 
             new("draw-distance", SettingPage.Graphics, "Draw distance",
                 "How far the world is drawn above ground. Further costs drawing time.",
@@ -270,7 +270,7 @@ public static class SettingsCatalog
                  One("6000", "FarClippingPlaneDistance", "6000", Works),
                  One("7000", "FarClippingPlaneDistance", "7000", Works),
                  One("8000", "FarClippingPlaneDistance", "8000", Works)],
-                "8000"),
+                "8000") { Group = "Distance and detail" },
 
             new("object-draw-distance", SettingPage.Graphics, "Building draw distance",
                 "How far buildings and other objects are drawn above ground; the land goes on to the draw "
@@ -280,7 +280,7 @@ public static class SettingsCatalog
                  One("4000", "MiddleClippingPlaneDistance", "4000", Works),
                  One("4500", "MiddleClippingPlaneDistance", "4500", Works),
                  One("5000", "MiddleClippingPlaneDistance", "5000", Works)],
-                "4000"),
+                "4000") { Group = "Distance and detail" },
 
             new("dungeon-draw-distance", SettingPage.Graphics, "Dungeon draw distance",
                 "How far the world is drawn underground - dungeons, and some open places such as the "
@@ -291,7 +291,7 @@ public static class SettingsCatalog
                  One("3000", "DungeonClippingPlaneDistance", "3000", Works),
                  One("3500", "DungeonClippingPlaneDistance", "3500", Works),
                  One("4000", "DungeonClippingPlaneDistance", "4000", Works)],
-                "4000"),
+                "4000") { Group = "Distance and detail" },
 
             new("small-object-distance", SettingPage.Graphics, "Small object distance",
                 "How far small things - lantern glows, small props - are drawn before the game drops "
@@ -304,7 +304,7 @@ public static class SettingsCatalog
                  One("3000", "CullStartDist", "3000", Works),
                  One("3500", "CullStartDist", "3500", Works),
                  One("4000", "CullStartDist", "4000", Works)],
-                "4000"),
+                "4000") { Group = "Distance and detail" },
 
             new("model-detail-distance", SettingPage.Graphics, "Model detail distance",
                 "How far buildings and other models keep their full detail before the game swaps in a "
@@ -314,7 +314,7 @@ public static class SettingsCatalog
                 [One("1 (the original)", "LODScale", "1.0", Works),
                  One("2 (twice the original)", "LODScale", "2.0", Works),
                  One("Always full detail", "LODScale", "100", Works)],
-                "2 (twice the original)"),
+                "2 (twice the original)") { Group = "Distance and detail" },
 
             new("land-detail-distance", SettingPage.Graphics, "Land detail distance",
                 "How far hills and ground keep their full detail. Past it the game draws them coarse and "
@@ -327,14 +327,14 @@ public static class SettingsCatalog
                  One("7168", "gl_terrain_detail_distance", "7168", Works),
                  One("8192", "gl_terrain_detail_distance", "8192", Works),
                  One("9216 (the whole view)", "gl_terrain_detail_distance", "9216", Works)],
-                "3072 (the original)"),
+                "3072 (the original)") { Group = "Distance and detail" },
 
             new("post-gamma", SettingPage.Graphics, "Game brightness",
                 "Applies the game's own brightness setting to the game's window only. Ignored leaves the picture at full brightness.",
                 [U9gl("gl_post_gamma")],
                 [One("Applied", "gl_post_gamma", "1", Works),
                  One("Ignored", "gl_post_gamma", "0", Works)],
-                "Applied"),
+                "Applied") { Group = "Picture" },
 
             new("texture-override", SettingPage.Graphics, "Replacement textures",
                 "Draws images from the \"textures\" folder beside U9GL.exe in place of the game's own, "
@@ -342,13 +342,13 @@ public static class SettingsCatalog
                 [U9gl("texture_override")],
                 [One("Off", "texture_override", "0", Works),
                  One("On", "texture_override", "1", Works)],
-                "On"),
+                "On") { Group = "Textures" },
 
             new("texture-detail", SettingPage.Graphics, "Texture detail",
                 "The game's own textures load at full size. Replacements always draw at their own size.",
                 [Game("GameMipMapLevel")],
                 [One("Full (the original)", "GameMipMapLevel", "1", Works)],
-                "Full (the original)", OnlyValue: true),
+                "Full (the original)", OnlyValue: true) { Group = "Textures" },
 
             new("wasd", SettingPage.Game, "WASD movement",
                 "Walk with W, A, S and D as well as the arrow keys, and diagonally with two keys held "
@@ -453,6 +453,14 @@ public static class SettingsCatalog
                 [One("On (the original)", "EnableConvoReplies", "1", Works),
                  One("Off", "EnableConvoReplies", "0", Works)],
                 "On (the original)") { Group = "Conversation" },
+
+            new("avatar-name", SettingPage.Game, "Avatar's name",
+                "Grandor's Dialogue Patch lets you choose the Avatar's name: some characters call you by it, "
+                + "while others keep the formal title, Avatar. Normal gameplay leaves the patch's lines as they are; "
+                + "type your own name to have them use it. Without the patch this does nothing.",
+                [U9gl("avatar_name")],
+                [One("Normal gameplay", "avatar_name", "", Works)],
+                "Normal gameplay", CustomStatus: Works) { Group = "Conversation" },
 
             new("large-address", SettingPage.Game, "Large address space",
                 "Up to 4 GB of memory instead of 2 GB, for many high-resolution textures. U9GL starts a "

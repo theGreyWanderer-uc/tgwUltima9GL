@@ -36,6 +36,7 @@ public sealed class ExeChanges
         new("the all-10.0 resistance row (the Crusty, flipped)", 0x00449D30, 0x00449D9F, false, true),
         new("the magic-only resistance row (the Slasher)", 0x00449E10, 0x00449E7F, false, true),
         new("the creature attack multipliers (unused in 1.19F)", 0x004143F0, 0x00415A41, false, true),
+        new("the fog's map switch (Beautiful Britannia's exe patch)", 0x005B9CD5, 0x005B9CD7, false),
         new("the Glide renderer's vtable", 0x0074FD10, 0x0074FDEC, true),
         new("Actor_NeedsRebuild", 0x004163F0, 0x004163F3, true),
         new("Actor_ResetTransientState", 0x0043CB5C, 0x0043CB62, true),

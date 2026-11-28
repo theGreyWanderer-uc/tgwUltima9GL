@@ -23,6 +23,8 @@ public sealed class GameDataCacheEntry
     public List<GameDataFile> Problems { get; set; } = [];
 
     public List<List<string>> PatchSets { get; set; } = [];
+
+    public List<PatchedFile> PatchedFiles { get; set; } = [];
 }
 
 public sealed class GameDataCache
@@ -80,6 +82,7 @@ public sealed class GameDataCache
             Problems = result.Files.Where(f => f.State != GameDataState.Ok)
                                    .OrderBy(f => f.IsProblem ? 0 : 1).Take(MaxProblemsKept).ToList(),
             PatchSets = result.PatchSets().Select(s => s.ToList()).ToList(),
+            PatchedFiles = result.PatchedFiles().ToList(),
         });
         Save();
     }
