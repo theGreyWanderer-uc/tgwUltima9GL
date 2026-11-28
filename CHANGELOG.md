@@ -2,6 +2,24 @@
 
 What changed in each release, for players. Settings named here are in the U9GL launcher.
 
+## 0.6.3 (2026-11-28)
+
+- **Your own name in the Dialogue Patch.** Grandor's Dialogue Patch has people call the Avatar
+  "Grandor". Set "Avatar's name" under Conversation on the Game page and they use your name
+  instead. The patch stays installed as it is, and lines where it says "Avatar" keep that.
+  Normal gameplay, the default, changes nothing.
+- **Beautiful Britannia's u9.exe is supported.** Its patcher changes two bytes of the game's fog,
+  and U9GL now installs and plays on the patched u9.exe (GOG and Steam).
+- **Beautiful Britannia recognised.** The Fan patches card names it, with what it means for your
+  saves. It and Forgotten World both replace Britannia's objects, so whichever you installed
+  second undoes part of the other: the card now says which, and what is lost.
+- **Fixed: the journal crashes at very high resolutions.** Above 4096 pixels wide or high, such as
+  5120x2160, opening the journal crashed the game. The limit is as old as U9GL.
+- **Fixed: the Avatar turns on his own at very high resolutions.** When the game's picture is
+  larger than your monitor, such as 5120x2160 on a 1920x1080 screen, the mouse could reach only
+  part of the screen and the Avatar kept turning. The mouse now covers the whole picture.
+- **Launcher.** The Graphics page is split into sections, as the Game page is.
+
 ## 0.6.2 (2026-11-26)
 
 - **New Game from the journal now works.** The original game, as GOG and Steam sell it, ships

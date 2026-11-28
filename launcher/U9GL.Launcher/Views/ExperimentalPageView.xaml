@@ -36,7 +36,7 @@
 
                             <StackPanel Margin="0,12,0,0" Orientation="Horizontal"
                                         Visibility="{Binding AllowsCustom, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="Or a custom value:" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <TextBlock Text="{Binding CustomPrompt}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                 <ItemsControl ItemsSource="{Binding CustomValues}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -47,12 +47,12 @@
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
                                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Width="90" />
+                                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Width="{Binding BoxWidth}" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <Button Content="Use these" Command="{Binding ApplyCustomCommand}" Padding="14,4" />
+                                <Button Content="{Binding CustomButtonText}" Command="{Binding ApplyCustomCommand}" Padding="14,4" />
                             </StackPanel>
                             <TextBlock Text="{Binding CustomError}" Style="{StaticResource ErrorTextStyle}" Margin="0,6,0,0"
                                        Visibility="{Binding CustomError, Converter={StaticResource TextToVisibility}}" />

@@ -2421,6 +2421,28 @@ static const U9PatchSpec SKY_FOG_SPEC = {
     5, SKY_FOG_CALL, 5, U9PF_EXCLUSIVE
 };
 
+static const uint8_t FOGLESS_EXPECT[2] = { 0x28, 0x75 };
+
+static const U9PatchSpec FOGLESS_SPEC = {
+    "FOGLESS_BELOW_MAP", U9PATCH_STUB, U9SYM_SKY_FOG_MAP40_TEST,
+    2, FOGLESS_EXPECT, 2, U9PF_EXCLUSIVE
+};
+
+static void fogless_install(int below)
+{
+    uint8_t bytes[2];
+    if (below < 1) below = 1;
+    if (below > 127) below = 127;
+    bytes[0] = (uint8_t)below;
+    bytes[1] = 0x7D;
+    if (u9patch_install_bytes(&FOGLESS_SPEC, bytes, 2))
+        u9log_line("FOGLESS: maps 0..%d take map 40's fog (colour 0x193C50, range 24000..65535);"
+                   " map 40 gets normal fog", below - 1);
+    else
+        u9log_line("FOGLESS: not installed - the bytes at 0x005B9CD5 are not 1.19F's (an exe"
+                   " already patched, e.g. by Beautiful Britannia?)");
+}
+
 typedef void *(U9CALL *LightCtorFn)(void *self, int r, int g, int b, float px, float py, float pz,
                                     float spread, int range, int flags);
 static LightCtorFn   o_lightCtor;
@@ -2909,6 +2931,11 @@ void u9fix_install(void)
 
     if (u9cfg_int("fix_indoor_fog", 1)) indoor_fog_install();
     else u9log_line("I-19 indoor fog fix off by config - rooms get the storm's fog, as stock");
+
+    {
+        int below = u9cfg_int("fogless_below_map", 0);
+        if (below > 0) fogless_install(below);
+    }
 
     if (u9cfg_int("fix_lightning_hall", 1)) {
         int height = u9cfg_int("fix_lightning_hall_height", 700);

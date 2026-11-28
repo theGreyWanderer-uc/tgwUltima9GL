@@ -19,6 +19,10 @@
 # DP 1.6 (readme "ver 1.6", files 2001-09-26; u9fanpatch160.zip) differs from 1.5 only in text.flx: 390 of its 7,656
 # entries, 362 of them spacing and punctuation, 28 reworded. Its other ten files are 1.5's byte for byte, so TYPENAME.FLX
 # and both BOOKS-EN.FLX have a DP 1.6 row too, and its NPC.FLX is the Monster row. Measured 2026-11-26 from the zip.
+# BB 2011R3 is Firstknight's Beautiful Britannia 2011 R3 (2011-12-15): its BB2011R3.cmd copies bitmap16.flx,
+# sdInfo16.flx, sappear.flx and fixed.9 into static and nonfixed.9 into runtime. Its terrain.9 ships but the .cmd
+# never copies it. Its nonfixed.9 is 1.19F's map 9 plus its own objects, none of FW's (docs/beautiful-britannia.md).
+# Measured 2026-11-27 from the release's files, not by installing them.
 # A sixth column marks a row: backup is a patch's copy of an original, which says nothing about what is installed.
 #folder	file	bytes	sha256	build	kind
 .	3DfxSpl2.dll	1105408	262c70749ac24b4d3691e39767d3e01b5b4957b9b82768186e5faa58f395ceba	1.19F
@@ -34,6 +38,7 @@ static	anim.flx	58731040	8fdc2cc8b8b999ce53687891fadb7e8eda427e8ed8f03cec7b77a51
 static	ankh.pal	1024	c627f9865aa5c121340debb8c29ee99cd8439b139b69ff407834f3682f4e2054	1.19F
 static	areas.flx	38702	34fab592ae1aa2fb007e359ff13f45c20f14cd7f1ce53d8a98e26b73214c0e69	1.19F
 static	bitmap16.flx	320877694	3ec4ece8540c64ac7717d431267d2ab85a8612ccf119b78c36a299021ad1adcb	1.19F
+static	bitmap16.flx	527863788	6f47dc97d91f831c82704e06d392b1a22f32295687e5fc98e460c3e728ed7b3e	BB 2011R3
 static	bitmapC.flx	127853218	fc968e348918239ac4a0a8d1694bcf9e6f6b58f3ddcbe8bc7e2d2ae7084d6ad2	1.19F
 static	bitmapsh.flx	179750129	0f093f8f9ca6953e7858338bd2f56e224cb9fb4284701be358e6f48a234974bc	1.19F
 static	BOOKS-EN.FLX	221316	a0653ef3608537575e707faa56aca6f24efc2eddaab554d49279d6c1c1a8858b	1.19F
@@ -206,6 +211,7 @@ static	fixed.86	16432	95a1fd9898ade2ae86f9b91a08d4cf10d548ba28e50496d8aa8c6055ab
 static	fixed.87	16432	97e483de23ee5cc9dfd22c57d47dda39cda106a78493864a6ca29fc78657b994	1.19F
 static	FIXED.89	32864	42425d6af740bbc45f0fdf366e9cf7ce8dcdb70894d33ea0d1edd26495a244eb	1.19F
 static	FIXED.9	1511456	3e0a2d05beda571fc2183c69617f83ccedd88f1b0a520c6f2458fc727f77439b	1.19F
+static	FIXED.9	2129952	444a832471c7110a32f9b818c6f925c527a176d584d10e11b6268ab85d01b3a3	BB 2011R3
 static	fixed.90	32864	ce7cd3d862c71d888afb3a94797e4f4687e49d11fd98f93976c9405a7d6e3168	1.19F
 static	fixed.98	180512	4bcb3bbc0b2aa05dcb1b746383873788ce5ddfec50001542bc5d25c7c45bfa30	1.19F
 static	fixed.99	33056	f1813e3938de50735ded1ba16b1ce19c717a032d329fbfee63faf1862a142623	1.19F
@@ -220,8 +226,10 @@ static	misctext.flx	14618	3c5bb8845ff101bfba87f38dcb253d81eb9bee6580d18c22a16491
 static	registry.txt	13686	e56a7bb518b3211c945381c35d15e5ed4601047ade42249c058843d008a9b24e	1.19F
 static	rgbccube.dat	27977	c66a086ea705897ce98fff2b6412ee53a44a3418f0e439882c98ade7ffd59b24	1.19F
 static	sappear.flx	79063216	df00297cfdaa8ef7da3303f091d968fbe0715061d80429db3ea7ce036a8f5a2e	1.19F
+static	sappear.flx	79109236	405579f65d4ac39f396f9686d7e965e640794b25cbed3ad050d01fa7a14efeaf	BB 2011R3
 static	sdInfo.flx	380784	70bbf45981a8c1cbbebf141464974487b4ccae5fbc544a6be02158c7096a3c52	1.19F
 static	sdInfo16.flx	380880	be01ec7328e4c174c0d80c84e096f7660595d8f4508696fb73d4bf1bd58a13d5	1.19F
+static	sdInfo16.flx	407184	ca87481f64478737c0cb3b7a93024fe898ebd081562da5924bd878c1b171d956	BB 2011R3
 static	sdInfoC.flx	379776	9bdcd63539dca223317a6b751d1eb17943fb222b110d77cf924d63dc123bae72	1.19F
 static	shade.tbl	8192	97a683b6527bdb07a5e21d914abd4685884d15df8632786468701441a625c5d8	1.19F
 static	shadegry.tbl	320	9e2fcc9333ea699cc8fcc87e85624891067ff6857ec66156d8c69883ca20157a	1.19F
@@ -395,6 +403,7 @@ static	terrain.86	1208	8b36bfa6d94a9cff5eeb2cc3dcdb4f36ec8eac7cba5625386ddb9bae5
 static	terrain.87	17592	9bd59431baff2cc73a2c37871073bcfa6a6b28f7a46517958d7b64b9ad1c280f	1.19F
 static	terrain.89	1304	0b608b2c623a696be1fcd3544fdb44daf5254fa4b3707bcad5994890bc5d34f7	1.19F
 static	terrain.9	5730456	3e2ae499d43c3d337b3295cd470662ec0c066077acc5f6e80aa48c9c928032df	1.19F
+static	terrain.9	5730456	0dc01dd20221868dbbec56957084097d6b7ec5dc274f54f137b482cc29b5a774	BB 2011R3
 static	terrain.90	4376	ac7b747fb02f050b1ecb09284a7bdd5e321192651a397f95ebce2ce7aff78fb0	1.19F
 static	terrain.98	263832	0f31fcca22dcea92ee170ea407a48f6ec73848900bca694fe3bf40d0a374487e	1.19F
 static	terrain.99	263832	8a906efdd9545da2e723b37707d59caeadd4160a52a4496b112cf315161eea5f	1.19F
@@ -594,6 +603,7 @@ runtime	NONFIXED.89	32868	33fa02136cf9e8764d3dc689a8bd0ab9a9c282554973f9ee1771cc
 runtime	NONFIXED.9	1740836	124df5a1798fb587a42e455201552d2c93b6e1f304e72b3fbc538c7479acf55a	1.19F
 runtime	NONFIXED.9	1773604	9eae04ab00f6de621fd8b7e7fe11ba4268c2696e27013ed49d3a7be88d364f9f	FW 1.19G
 runtime	NONFIXED.9	1773604	8955bb8be66e4bc35a919fe45dfbfff61f16c713eb7eded2d22e4858f0953b28	FW 1.19H
+runtime	NONFIXED.9	1777700	cd96cd3c237adcdf9fa0daf433eea0344624f93434cec3714bc1f9b2e68eff71	BB 2011R3
 runtime	nonfixed.90	49252	471136d528708543c308950d831101da74046d0caf9cc16b2a4ae06e55b2a1e2	1.19F
 runtime	nonfixed.98	131364	e40990e617526961956ef8626b692456f6c24424e382097dc3bdf8abb2e95043	1.19F
 runtime	nonfixed.99	49444	d9f4227a42933cf9cb5fa4c8837afd96d097eedd552230a846275d314e50ccf5	1.19F

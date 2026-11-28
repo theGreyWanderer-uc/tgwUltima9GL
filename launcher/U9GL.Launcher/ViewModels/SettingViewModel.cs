@@ -28,12 +28,9 @@ public sealed class CustomValueViewModel(SettingKey key) : ObservableObject
 
     public SettingKey Key { get; } = key;
 
-    public string Label => Key.Key switch
-    {
-        "GameScreenWidth" => "Width",
-        "GameScreenHeight" => "Height",
-        _ => Key.Key,
-    };
+    public string Label => CustomValues.Label(Key.Key);
+
+    public double BoxWidth => CustomValues.IsText(Key.Key) ? 200 : 90;
 
     public string Text
     {
@@ -74,6 +71,8 @@ public sealed class SettingViewModel : ObservableObject
     public bool AllowsCustom => Definition.CustomStatus != null;
     public bool PageAllowsCustom => Definition.CustomStatus is LedgerStatus.Works or LedgerStatus.Partial;
     public ICommand ApplyCustomCommand { get; }
+    public string CustomButtonText => CustomValues.Count == 1 ? "Use this" : "Use these";
+    public string CustomPrompt => U9GL.Core.Settings.CustomValues.Prompt(Definition.Keys[0].Key);
     public ICommand TurnOnCommand { get; }
     public ICommand UseVerifiedCommand { get; }
 
@@ -205,12 +204,12 @@ public sealed class SettingViewModel : ObservableObject
         var values = new Dictionary<string, string>();
         foreach (var box in CustomValues)
         {
-            if (!int.TryParse(box.Text.Trim(), out int number) || number < 320 || number > 7680)
+            if (U9GL.Core.Settings.CustomValues.Check(box.Key.Key, box.Text, out string value) is { } error)
             {
-                CustomError = $"{box.Label} must be a whole number from 320 to 7680.";
+                CustomError = error;
                 return;
             }
-            values[box.Key.Key] = number.ToString();
+            values[box.Key.Key] = value;
         }
         CustomError = "";
 

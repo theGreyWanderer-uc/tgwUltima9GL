@@ -31,6 +31,10 @@
         {
           "label": "1920 \u00D7 1080",
           "note": ""
+        },
+        {
+          "label": "A custom size",
+          "note": "Any width and height from 320 to 7680."
         }
       ]
     },
@@ -665,6 +669,20 @@
         {
           "label": "Off",
           "note": ""
+        }
+      ]
+    },
+    {
+      "title": "Avatar\u0027s name",
+      "description": "Grandor\u0027s Dialogue Patch lets you choose the Avatar\u0027s name: some characters call you by it, while others keep the formal title, Avatar. Normal gameplay leaves the patch\u0027s lines as they are; type your own name to have them use it. Without the patch this does nothing.",
+      "choices": [
+        {
+          "label": "Normal gameplay",
+          "note": ""
+        },
+        {
+          "label": "Your own name",
+          "note": "Up to 24 characters: letters, spaces, apostrophes, hyphens and full stops."
         }
       ]
     },

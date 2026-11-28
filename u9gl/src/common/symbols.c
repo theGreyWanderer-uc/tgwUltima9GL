@@ -248,6 +248,8 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x005BCF5Fu, "Sky_UpdateRain (0x005BCE50): CALL SpaceTree_SpaceAt 0x0053E440, thiscall on the spaces tree (point = the falling drop's position), RET 4; non-zero kills the drop" },
     [U9SYM_SKY_FOG_CALL] =
         { 0x005B92DBu, "Sky_FrameUpdate (0x005B8BA0): CALL Sky_UpdateFog 0x005B97E0, fastcall (sky in ECX), the per-frame weather fog" },
+    [U9SYM_SKY_FOG_MAP40_TEST] =
+        { 0x005B9CD5u, "Sky_UpdateFog_MapSwitch (0x005B9CCA): the imm8 of CMP ECX,0x28 (map 40) and the JNE opcode after it; map 40 gets fog colour 0x193C50 and range 24000..65535" },
     [U9SYM_LIGHTNING_LIGHT_CALL] =
         { 0x005BD5B7u, "Sky_LightningStrike (0x005BD440): CALL Light_Construct 0x004D5F10, thiscall (r, g, b, position, spread 0.5, range 0, flags 0), RET 0x24 - the strike's light" },
     [U9SYM_LIGHTNING_COLOUR_CALL] =
@@ -415,6 +417,8 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x00740374u, "u9.exe import slot: USER32!PeekMessageA (the message loop 0x005D6F70)" },
     [U9SYM_IAT_GETMESSAGEA] =
         { 0x00740378u, "u9.exe import slot: USER32!GetMessageA (the message loop 0x005D6F70)" },
+    [U9SYM_IAT_SETCURSORPOS] =
+        { 0x007402A8u, "u9.exe import slot: USER32!SetCursorPos (11 callers; GameUI_InputEvent's grid put-backs)" },
 
     [U9SYM_MAP_LOAD] =
         { 0x004DF8D0u, "Map_Load: thiscall, 1 stack arg (RET 4); this+0x20 is the map; terrain, textures, then ItemMgr_LoadMap" },
@@ -665,6 +669,10 @@ static const SymRow TABLE[U9SYM_COUNT] = {
         { 0x00499B84u, "GameUI_InputEvent, CALL [EAX+0x90] (FF 90 90 00 00 00): MoveCon_TurnTo on the Avatar's mover, ECX = mover, (camera manager yaw, -1, 0)" },
     [U9SYM_STEPDIR_UNIT_BUILD] =
         { 0x0057FE02u, "MoveCon_StepDir, CALL 0x005B35B0 (E8): Vec3(x,y,z) from the three pushes, then stored at [EBP-0x58] - the cases' join" },
+    [U9SYM_SPOKENLINE_ENTRY_LENGTH_CALL] =
+        { 0x00616083u, "SpokenLine_Create: CALL Text_EntryLength (E8 48 F8 F2 FF), fastcall(index, &length) - the entry's UTF-16 length, NUL included; its only caller" },
+    [U9SYM_SPOKENLINE_READ_ENTRY_CALL] =
+        { 0x006160B1u, "SpokenLine_Create: CALL Text_ReadEntry (E8 7A F8 F2 FF), fastcall(index, buffer of length*2 bytes) - its only caller" },
 };
 
 static uintptr_t RUNTIME[U9SYM_COUNT];

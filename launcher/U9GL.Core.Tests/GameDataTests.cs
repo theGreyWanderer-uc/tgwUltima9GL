@@ -324,6 +324,56 @@ public sealed class GameDataTests
             Assert.IsTrue(GameDataManifest.Load().Builds().Contains(family.Latest!), $"{family.Latest} has no manifest rows");
     }
 
+    private static PatchedFile Pf(string folder, string name, params string[] builds) => new(folder, name, builds);
+
+    private static List<PatchedFile> Fw(string nonfixed9Build) =>
+    [
+        Pf("static", "TRIGGERS.FLX", "FW 1.19H"),
+        Pf("static", "activity.flx", "FW 1.19H"),
+        Pf("static", "highway.dat", "FW 1.19G", "FW 1.19H"),
+        Pf("runtime", "NONFIXED.22", "FW 1.19H"),
+        Pf("runtime", "NONFIXED.9", nonfixed9Build),
+    ];
+
+    private static List<PatchedFile> Bb() =>
+    [
+        Pf("static", "bitmap16.flx", "BB 2011R3"),
+        Pf("static", "sdInfo16.flx", "BB 2011R3"),
+        Pf("static", "sappear.flx", "BB 2011R3"),
+        Pf("static", "FIXED.9", "BB 2011R3"),
+    ];
+
+    [TestMethod]
+    public void BbAfterFwReplacesFwsMapNine()
+    {
+        var replaced = GameDataPatch.Replaced(GameDataManifest.Load(), Fw("BB 2011R3").Concat(Bb()));
+        var only = replaced.Single();
+        Assert.AreEqual("FW", only.Family);
+        Assert.AreEqual("BB", only.By);
+        Assert.AreEqual("NONFIXED.9", only.Name);
+        Assert.IsTrue(GameDataPatch.LostWhenReplaced.ContainsKey(("FW", "nonfixed.9")));
+    }
+
+    [TestMethod]
+    public void FwAfterBbReplacesBbsMapNine()
+    {
+        var replaced = GameDataPatch.Replaced(GameDataManifest.Load(), Fw("FW 1.19H").Concat(Bb()));
+        var only = replaced.Single();
+        Assert.AreEqual("BB", only.Family);
+        Assert.AreEqual("FW", only.By);
+        Assert.IsTrue(GameDataPatch.LostWhenReplaced.ContainsKey(("BB", "nonfixed.9")));
+    }
+
+    [TestMethod]
+    public void NothingReplacedWhenEachPatchHasItsOwnFiles()
+    {
+        var manifest = GameDataManifest.Load();
+        Assert.AreEqual(0, GameDataPatch.Replaced(manifest, Bb().Append(Pf("runtime", "NONFIXED.9", "BB 2011R3"))).Count);
+        Assert.AreEqual(0, GameDataPatch.Replaced(manifest, Fw("FW 1.19H")).Count);
+        Assert.AreEqual(0, GameDataPatch.Replaced(manifest, Fw("FW 1.19H").Append(Pf("static", "text.flx", "DP 1.5"))).Count);
+        Assert.AreEqual(0, GameDataPatch.Replaced(manifest, Fw("FW 1.19G")).Count);
+    }
+
     [TestMethod]
     public void PatchNamesSortOldestFirst()
     {

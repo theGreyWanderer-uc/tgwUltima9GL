@@ -39,6 +39,10 @@ public sealed record GameDataFolderResult(
     public IReadOnlyList<IReadOnlyList<string>> PatchSets() =>
         GameDataPatch.Distinct(Files.Where(f => f.State == GameDataState.Patched && !f.Backup).Select(f => f.Builds));
 
+    public IReadOnlyList<PatchedFile> PatchedFiles() =>
+        Files.Where(f => f.State == GameDataState.Patched && !f.Backup)
+             .Select(f => new PatchedFile(f.Folder, f.Name, f.Builds)).ToList();
+
     public bool AllKnownGood => Exists && Changed == 0 && Missing == 0 && Unreadable == 0;
 }
 
@@ -57,6 +61,10 @@ public sealed record GameDataPatchVerdict(GameDataPatchKind Kind, string? Build,
 
 public sealed record FanPatchFamily(string Id, string Title, string? Latest, string About, string? Saves = null);
 
+public sealed record PatchedFile(string Folder, string Name, IReadOnlyList<string> Builds);
+
+public sealed record PatchReplaced(string Family, string Folder, string Name, string By);
+
 public static class GameDataPatch
 {
     public static readonly IReadOnlyList<FanPatchFamily> Families =
@@ -71,7 +79,35 @@ public static class GameDataPatch
             "Works with existing saves."),
         new("Monster", "Novum's Monster Patch", null,
             "Novum's tougher monsters, shipped with the Dialogue Patch."),
+        new("BB", "Beautiful Britannia", "BB 2011R3",
+            "Firstknight's sharper terrain and castle textures and thousands of plants, flowers and butterflies for Britannia; it also removes 11 Brutes and 5 Stone Demons there.",
+            "Its textures and plants reach existing saves; its butterflies and the monsters it removes only reach a new game, as a save keeps Britannia's objects once it has been there."),
     ];
+
+    public static readonly IReadOnlyDictionary<(string Family, string File), string> LostWhenReplaced =
+        new Dictionary<(string, string), string>
+        {
+            [("FW", "nonfixed.9")] = "its fixes to Britannia's objects are missing: Mariah and Jaana's markers and the lowered Runes and virtue items",
+            [("BB", "nonfixed.9")] = "its butterflies and flowers among Britannia's objects are missing, and the Brutes and Stone Demons it removes are back",
+        };
+
+    public static IReadOnlyList<PatchReplaced> Replaced(GameDataManifest manifest, IEnumerable<PatchedFile> files)
+    {
+        var all = files.ToList();
+        var result = new List<PatchReplaced>();
+        foreach (var file in all)
+        {
+            var holders = file.Builds.Select(FamilyOf).Distinct().ToList();
+            var elsewhere = all.Where(f => !ReferenceEquals(f, file))
+                               .SelectMany(f => f.Builds).Select(FamilyOf).Distinct();
+            foreach (string family in elsewhere.Except(holders).Order(StringComparer.Ordinal))
+            {
+                bool ships = manifest.For(file.Folder, file.Name).Any(e => !e.Backup && FamilyOf(e.Build) == family);
+                if (ships) result.Add(new PatchReplaced(family, file.Folder, file.Name, holders[0]));
+            }
+        }
+        return result;
+    }
 
     public static string FamilyOf(string build)
     {

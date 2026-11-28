@@ -169,6 +169,17 @@ public sealed class PatchStatusViewModel(FanPatchFamily family) : StatusRowViewM
         string detail = (changes.Length > 0 ? $" It changes {changes}." : "")
                         + (renamed != null ? $" The Avatar is called {renamed.AvatarName} (renamed with u9name.exe)." : "");
 
+        var replaced = GameDataPatch.Replaced(GameDataManifest.Load(), folders.SelectMany(f => f.PatchedFiles))
+                                    .Where(r => r.Family == Family.Id).ToList();
+        string replacedText = string.Concat(replaced.Select(r =>
+        {
+            string by = GameDataPatch.Families.FirstOrDefault(f => f.Id == r.By)?.Title ?? r.By;
+            string lost = GameDataPatch.LostWhenReplaced.TryGetValue((Family.Id, r.Name.ToLowerInvariant()), out var what)
+                ? what : "its changes in that file are missing";
+            return $" {by} was installed after it and replaced its {r.Folder}\\{r.Name.ToLowerInvariant()}, so {lost}. "
+                   + $"Installing {Family.Title} again puts its file back, and loses {by}'s changes to it instead.";
+        }));
+
         switch (verdict.Kind)
         {
             case GameDataPatchKind.None:
@@ -194,8 +205,10 @@ public sealed class PatchStatusViewModel(FanPatchFamily family) : StatusRowViewM
                 Note = Family.About + detail
                        + (latest ? "" : $" {GameDataPatch.VersionOf(Family.Latest!)} is newer: update available.")
                        + (Family.Id == "DP" ? " Choose subtitles only under Speech on the Game page: the recordings still say the original lines." : "")
+                       + replacedText
                        + SavesSentence(out bool savesWarn);
-                if (savesWarn) Tone = Tone.Warning;
+                if (savesWarn || replaced.Count > 0) Tone = Tone.Warning;
+                if (replaced.Count > 0) ShortStatus = $"{ShortStatus}, PART REPLACED";
                 break;
             default:
                 ShortStatus = "MIXED";
@@ -284,6 +297,8 @@ public sealed class GameDataFolderViewModel : StatusRowViewModel
 
     public IReadOnlyList<IReadOnlyList<string>>? PatchSets { get => _patchSets; private set => SetProperty(ref _patchSets, value); }
 
+    public IReadOnlyList<PatchedFile> PatchedFiles { get; private set; } = [];
+
     public IReadOnlyList<string> Notes { get => _notes; private set => SetProperty(ref _notes, value); }
 
     public void SetChecking(string text)
@@ -292,6 +307,7 @@ public sealed class GameDataFolderViewModel : StatusRowViewModel
         Tone = Tone.Neutral;
         Note = text;
         PatchSets = null;
+        PatchedFiles = [];
     }
 
     public void SetUnchecked(string? reason = null)
@@ -303,6 +319,7 @@ public sealed class GameDataFolderViewModel : StatusRowViewModel
         Files = [];
         Notes = [];
         PatchSets = null;
+        PatchedFiles = [];
     }
 
     public void SetCached(GameDataCacheEntry entry)
@@ -310,6 +327,7 @@ public sealed class GameDataFolderViewModel : StatusRowViewModel
         (StatusText, ShortStatus, Tone) = Verdict(Counts.Of(entry));
         Note = Describe(Counts.Of(entry));
         PatchSets = entry.PatchSets;
+        PatchedFiles = entry.PatchedFiles;
         CheckedText = $"Checked {Ago(entry.CheckedUtc)}; the folder has not changed since.";
         Files = entry.Problems.OrderBy(f => Order(f.State)).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
             .Take(ShownFiles).Select(Row).ToList();
@@ -328,11 +346,13 @@ public sealed class GameDataFolderViewModel : StatusRowViewModel
             Files = [];
             Notes = [];
             PatchSets = [];
+            PatchedFiles = [];
             return;
         }
         (StatusText, ShortStatus, Tone) = Verdict(Counts.Of(result));
         Note = Describe(Counts.Of(result));
         PatchSets = result.PatchSets();
+        PatchedFiles = result.PatchedFiles();
         CheckedText = $"Checked at {DateTime.Now:HH:mm:ss}: {result.BytesRead / (double)(1 << 20):0} MB read in {result.Took.TotalSeconds:0.0} s.";
 
         var rows = result.Files.Where(f => f.State != GameDataState.Ok)

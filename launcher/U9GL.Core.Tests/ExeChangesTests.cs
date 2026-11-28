@@ -90,9 +90,36 @@ public sealed class ExeChangesTests
             data[section.RawOffset + (mid - section.Va)] ^= 0x01;
             var change = map.Compare(data).Changes.Single();
             CollectionAssert.Contains(change.Places.Select(p => p.Name).ToList(), place.Name, place.Name);
-            Assert.AreEqual(place.ValuesInCode, change.IsCode, place.Name);
+            Assert.AreEqual(section.Name == ".text", change.IsCode, place.Name);
             Assert.AreEqual(place.ValuesInCode, change.IsValuesInCode, place.Name);
         }
+    }
+
+    [TestMethod]
+    public void BeautifulBritanniasPatchIsKnown()
+    {
+        if (!File.Exists(StockExe) || BuildIdentity.Identify(StockExe).Source != "GOG") Assert.Inconclusive("no GOG 1.19F here");
+        var data = File.ReadAllBytes(StockExe);
+        CollectionAssert.AreEqual(new byte[] { 0x28, 0x75 }, data.AsSpan(0x1B90D5, 2).ToArray());
+        data[0x1B90D5] = 0x0F;
+        data[0x1B90D6] = 0x7D;
+        string path = Path.Combine(Path.GetTempPath(), $"u9gl-bb-{Guid.NewGuid():N}.exe");
+        try
+        {
+            File.WriteAllBytes(path, data);
+            var build = BuildIdentity.Identify(path);
+            Assert.IsTrue(build.IsSupported);
+            Assert.AreEqual(BuildIdentity.BeautifulBritanniaFog, build.Change);
+            Assert.AreEqual("1.19F (GOG, Beautiful Britannia fog)", build.Display);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+        var change = ExeChanges.Load().Compare(data).Changes.Single();
+        Assert.AreEqual(".text", change.Part);
+        CollectionAssert.Contains(change.Places.Select(p => p.Name).ToList(),
+                                  "the fog's map switch (Beautiful Britannia's exe patch)");
     }
 
     [TestMethod]

@@ -239,7 +239,13 @@ void *U9CALL u9gl_slot_capture(void *self, unsigned toBuffer)
 
     w = *(const unsigned *)((const char *)self + U9_OFF_WIDTH);
     h = *(const unsigned *)((const char *)self + U9_OFF_HEIGHT);
-    if (!w || !h || w > 4096u || h > 4096u) return 0;
+    if (!w || !h || w > 8192u || h > 8192u) {
+        static unsigned said;
+        if (said++ < 4)
+            u9log_line("STAGE5 CaptureScreen REFUSED %ux%u (over 8192): the journal will"
+                       " crash on this NULL", w, h);
+        return 0;
+    }
 
     while ((1u << lw) < w) lw++;
     while ((1u << lh) < h) lh++;
